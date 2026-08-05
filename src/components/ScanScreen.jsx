@@ -1,11 +1,14 @@
 import { useState } from "react";
+import BarcodeScanner from "./BarcodeScanner.jsx";
 
-/** Pantalla de "escaneo" manual: el usuario tipea los 12 digitos que ve bajo el codigo de barras.
- * El 13avo (verificador) lo calcula el motor de reglas — ver App.jsx / core/character.js#checkDigit. */
+/** Pantalla de "escaneo": camara en vivo (real, via BarcodeScanner) o tipear los 12 digitos a
+ * mano. El 13avo (verificador) lo calcula el motor de reglas en los dos casos — ver App.jsx /
+ * core/character.js#checkDigit. */
 export default function ScanScreen({ onScan, onCodex, onTeam, onRandomGenerate }) {
   const [digits, setDigits] = useState("");
   const [error, setError] = useState("");
   const [generated, setGenerated] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   const handleRandomGenerate = () => {
     onRandomGenerate();
@@ -28,8 +31,23 @@ export default function ScanScreen({ onScan, onCodex, onTeam, onRandomGenerate }
     onScan(digits);
   };
 
+  const handleDetected = (digits12) => {
+    setShowCamera(false);
+    onScan(digits12);
+  };
+
+  if (showCamera) {
+    return <BarcodeScanner onDetected={handleDetected} onClose={() => setShowCamera(false)} />;
+  }
+
   return (
     <form className="scan-screen" onSubmit={handleSubmit}>
+      <button type="button" className="scan-again" onClick={() => setShowCamera(true)}>
+        📷 Escanear con cámara
+      </button>
+
+      <div className="scan-or">o escribí el código</div>
+
       <label htmlFor="barcode-input">Código de barras (12 dígitos)</label>
       <input
         id="barcode-input"
