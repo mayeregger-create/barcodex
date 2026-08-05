@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#633806"/>
+  <g fill="#FAEEDA">
+    <rect x="126" y="156" width="14" height="200" />
+    <rect x="150" y="156" width="6" height="200" />
+    <rect x="168" y="156" width="20" height="200" />
+    <rect x="200" y="156" width="6" height="200" />
+    <rect x="218" y="156" width="14" height="200" />
+    <rect x="242" y="156" width="6" height="200" />
+    <rect x="260" y="156" width="22" height="200" />
+    <rect x="294" y="156" width="6" height="200" />
+    <rect x="312" y="156" width="14" height="200" />
+    <rect x="336" y="156" width="20" height="200" />
+    <rect x="368" y="156" width="6" height="200" />
+    <rect x="386" y="156" width="14" height="200" />
+  </g>
+  <text x="256" y="404" text-anchor="middle" font-family="ui-monospace, Consolas, monospace" font-size="46" font-weight="700" fill="#FAEEDA" letter-spacing="4">BARCODEX</text>
+</svg>

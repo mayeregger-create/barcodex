@@ -1,0 +1,1368 @@
+/* Sistema pixel-art (inspirado en menus de RPG de GBA: Pokemon Esmeralda, Golden Sun) —
+ * paneles rectos con bisel de 2 tonos, sin bordes redondeados, sombra dura sin blur, tipografia
+ * bitmap. Pensado SOLO para celular vertical, sin variantes responsive: cada pantalla ocupa
+ * exactamente el viewport (100dvh), sin scroll de pagina — el scroll, si hace falta, queda
+ * acotado a una zona interna puntual (ver .pixel-scroll). */
+:root {
+  --hue-bg: #faeeda;
+  --hue-mid: #ba7517;
+  --hue-dark: #633806;
+
+  --ink: #171018; /* fondo general, fuera de los paneles */
+  --ink-2: #241a26;
+  --paper: #fff8ec; /* highlight/borde claro — mismo tono que el brillo de los sprites */
+  --line: #1a1610; /* linea/sombra mas oscura — mismo tono que el outline de los sprites */
+  --text-body: #2a1c14;
+
+  --font-pixel: "Pixelify Sans", "Segoe UI", system-ui, sans-serif;
+  --bevel: 3px;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-weight: 500;
+  background: var(--ink);
+  color: var(--text-body);
+  -webkit-font-smoothing: none;
+}
+
+button, input {
+  font-family: inherit;
+}
+
+/* Sombra dura "pixelada" (sin blur) reutilizada por paneles/botones/chips. */
+.pixel-panel, .pixel-btn, .pixel-chip {
+  border-radius: 0;
+}
+
+.app {
+  height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ink);
+  transition: background 0.2s ease;
+}
+
+.app-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  background: var(--ink-2);
+  border-bottom: var(--bevel) solid var(--hue-mid);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--paper);
+  text-shadow: 2px 2px 0 var(--line);
+}
+
+.app-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 0;
+  overflow: hidden;
+}
+
+/* Zona con scroll acotado — unica excepcion permitida al "sin scroll" (ej: grilla del Codex,
+ * log de combate). Barra angosta, no el scrollbar ancho por defecto del navegador. */
+.pixel-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hue-mid) transparent;
+}
+
+.pixel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pixel-scroll::-webkit-scrollbar-thumb {
+  background: var(--hue-mid);
+}
+
+/* --- Panel base: "ventana" GBA — plano, sin redondeo, bisel de 2 tonos + sombra dura. Cada
+ * pantalla (Escanear/Resultado/Codex/Equipo/Combate) es UNA de estas ventanas, llenando
+ * .app-content entero. --- */
+.scan-screen,
+.result-card,
+.codex-screen,
+.team-screen,
+.combat-screen {
+  background: var(--hue-bg);
+  border: var(--bevel) solid var(--hue-dark);
+  box-shadow:
+    inset 2px 2px 0 var(--paper),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.22),
+    4px 4px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* --- Botones --- */
+.scan-screen button,
+.scan-again {
+  margin-top: 0;
+  padding: 10px 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--font-pixel);
+  border: var(--bevel) solid var(--line);
+  background: var(--hue-mid);
+  color: var(--paper);
+  cursor: pointer;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.45),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.3),
+    3px 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.scan-screen button:active:not(:disabled),
+.scan-again:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+.scan-screen button:disabled {
+  background: #6b675f;
+  border-color: var(--line);
+  color: #a8a49a;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.scan-again.scan-again--secondary {
+  background: var(--hue-bg);
+  color: var(--hue-dark);
+}
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex: none;
+}
+
+.result-actions .scan-again {
+  flex: 1;
+}
+
+.dev-tools {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px dashed var(--hue-dark);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.dev-tools-btn {
+  background: transparent;
+  border: 2px dashed var(--hue-dark);
+  color: var(--hue-dark);
+  font-family: var(--font-pixel);
+  font-size: 0.65rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.dev-tools-confirm {
+  font-size: 0.62rem;
+  color: #3b6d11;
+  font-weight: 700;
+}
+
+/* --- Pantalla de escaneo --- */
+.scan-screen {
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-screen label {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--hue-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scan-screen input {
+  font-family: var(--font-pixel);
+  font-size: 1.25rem;
+  letter-spacing: 0.15em;
+  text-align: center;
+  padding: 10px;
+  background: var(--paper);
+  border: var(--bevel) solid var(--hue-dark);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.15);
+  color: var(--text-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-screen input:focus {
+  outline: none;
+  border-color: var(--line);
+}
+
+.scan-count {
+  text-align: right;
+  font-size: 0.7rem;
+  color: var(--hue-dark);
+}
+
+.scan-error {
+  color: #a32d2d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.result-card {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.result-header {
+  flex: none;
+  display: flex;
+  gap: 10px;
+}
+
+.result-portrait {
+  flex: 0 0 84px;
+  width: 84px;
+  height: 84px;
+  overflow: hidden;
+  background: var(--paper);
+  image-rendering: pixelated;
+}
+
+.result-portrait img,
+.result-portrait canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.queued-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hue-bg);
+}
+
+.hourglass {
+  font-size: 22px;
+  animation: hourglass-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes hourglass-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.queued-image-error {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--hue-bg);
+  color: inherit;
+  font-size: 0.72rem;
+  opacity: 0.85;
+  padding: 6px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.queued-image-error:active {
+  opacity: 1;
+}
+
+.result-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Retrato "hero" del personaje (Result): grande, al costado de los datos (no apilado arriba)
+ * — usa el ancho libre en vez de la altura, para que "sin scroll en ningun lado" alcance incluso
+ * con nombres/epitetos largos. Se pixela al agrandarse a proposito. --- */
+.result-hero {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-portrait-big {
+  /* Probado contra los textos mas largos que genera el motor (nombre+rol+epiteto): a partir de
+   * ~250px el bloque de texto de al lado empieza a pedir scroll interno. 190px deja margen real
+   * debajo de eso. */
+  flex: 0 0 190px;
+  width: 190px;
+  height: 190px;
+  overflow: hidden;
+  background: var(--paper);
+  image-rendering: pixelated;
+}
+
+.result-portrait-big canvas,
+.result-portrait-big img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* --- Panel del codigo de barras: el EAN-13 real de character.code (ver Barcode.jsx), no un
+ * patron decorativo — "esto es lo que invoco a este personaje". Fondo claro + barras oscuras,
+ * como un codigo de verdad, adentro del mismo lenguaje de ventana con bisel que el resto. --- */
+.result-barcode-panel {
+  flex: none;
+  background: var(--paper);
+  border: var(--bevel) solid var(--hue-dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  padding: 8px 10px 6px;
+  margin: 8px 0;
+  text-align: center;
+  color: var(--line);
+}
+
+.result-barcode-svg {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+}
+
+.result-barcode-panel .result-code {
+  margin: 4px 0 0;
+}
+
+.result-badge {
+  display: inline-block;
+  background: var(--hue-mid);
+  color: var(--paper);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 2px solid var(--hue-dark);
+  margin-bottom: 4px;
+}
+
+.result-card h2 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  color: var(--hue-dark);
+  text-shadow: 1px 1px 0 var(--paper);
+}
+
+.result-epithet {
+  font-style: italic;
+  color: var(--hue-mid);
+  font-size: 0.72rem;
+  margin-bottom: 2px;
+}
+
+.result-sub {
+  color: var(--text-body);
+  font-size: 0.68rem;
+}
+
+.result-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.result-code {
+  font-family: var(--font-pixel);
+  font-size: 0.62rem;
+  color: var(--hue-mid);
+  margin: 0 0 8px;
+  letter-spacing: 0.04em;
+}
+
+/* --- Grilla de stats: 2 columnas (antes era una lista apilada de 1) — mismos datos, mas parecido
+ * a una ficha/tablero que a un formulario. HP ocupa el ancho completo abajo, como cierre. --- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.stat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-row--hp {
+  grid-column: 1 / -1;
+}
+
+.stat-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.stat-label {
+  font-size: 0.58rem;
+  color: var(--hue-dark);
+  text-transform: uppercase;
+}
+
+.stat-bar {
+  height: 9px;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  background: var(--hue-mid);
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.35) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.stat-value {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+}
+
+.result-block {
+  margin-bottom: 10px;
+  padding-top: 8px;
+  border-top: 2px dashed var(--hue-dark);
+}
+
+.result-block h3 {
+  margin: 0 0 3px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--hue-mid);
+}
+
+.result-block p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-body);
+}
+
+.tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: var(--hue-bg);
+  color: var(--hue-dark);
+  border: 2px solid var(--hue-dark);
+  padding: 1px 6px;
+}
+
+/* --- Codex: tabs anidadas (Opcion A) — Personajes/Items arriba, continente/categoria debajo,
+ * grilla de chips con scroll interno acotado. Tocar un chip lleva a una pantalla de detalle de
+ * pantalla completa (reusa CharacterCard/ItemCard con onBack), no side-by-side. --- */
+.codex-screen {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pixel-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: var(--bevel) solid var(--hue-dark);
+}
+
+.pixel-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--ink-2);
+  color: #948a97;
+  border: none;
+  border-right: 2px solid var(--hue-dark);
+  cursor: pointer;
+}
+
+.pixel-tab:last-child {
+  border-right: none;
+}
+
+.pixel-tab--active {
+  background: var(--hue-bg);
+  color: var(--hue-dark);
+}
+
+.pixel-subtabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 2px dashed var(--hue-dark);
+}
+
+.pixel-subtab {
+  flex: none;
+  font-family: var(--font-pixel);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 4px 7px;
+  background: var(--paper);
+  color: var(--hue-dark);
+  border: 2px solid var(--hue-dark);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pixel-subtab--active {
+  background: var(--hue-mid);
+  color: var(--paper);
+}
+
+.pixel-subtab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pixel-subtab-count {
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+.codex-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 0.68rem;
+  color: var(--hue-dark);
+}
+
+.codex-group-header--empty {
+  padding: 4px 0;
+  opacity: 0.6;
+  margin-bottom: 0;
+  justify-content: space-between;
+}
+
+.codex-count {
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--hue-mid);
+}
+
+.codex-chips {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  padding: 8px;
+}
+
+.codex-screen > .result-actions {
+  flex: none;
+  padding: 0 8px 8px;
+}
+
+.codex-chip {
+  width: 30%;
+  border: 2px solid var(--hue-dark);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: center;
+  background: var(--paper);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.codex-chip-headshot {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.codex-chip-headshot img,
+.codex-chip-headshot canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.codex-chip-name {
+  font-weight: 700;
+  font-size: 0.58rem;
+  padding: 4px 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.codex-chip-rareza {
+  font-size: 0.5rem;
+  opacity: 0.85;
+  padding: 0 3px 4px;
+}
+
+.codex-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.codex-chip--coral { background: #FAECE7; }
+.codex-chip--coral .codex-chip-name, .codex-chip--coral .codex-chip-rareza { color: #712B13; }
+.codex-chip--purple { background: #EEEDFE; }
+.codex-chip--purple .codex-chip-name, .codex-chip--purple .codex-chip-rareza { color: #3C3489; }
+.codex-chip--teal { background: #E1F5EE; }
+.codex-chip--teal .codex-chip-name, .codex-chip--teal .codex-chip-rareza { color: #085041; }
+.codex-chip--amber { background: #FAEEDA; }
+.codex-chip--amber .codex-chip-name, .codex-chip--amber .codex-chip-rareza { color: #633806; }
+.codex-chip--pink { background: #FBEAF0; }
+.codex-chip--pink .codex-chip-name, .codex-chip--pink .codex-chip-rareza { color: #72243E; }
+
+.codex-chip--item { background: var(--hue-bg); }
+.codex-chip--item .codex-chip-name, .codex-chip--item .codex-chip-rareza { color: var(--hue-dark); }
+
+.team-slots {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.team-screen {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.team-screen h2 {
+  flex: none;
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  color: var(--hue-dark);
+  text-shadow: 1px 1px 0 var(--paper);
+}
+
+.team-slot {
+  flex: 1;
+  overflow: hidden;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  text-align: center;
+  display: block;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.team-slot--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 68px;
+  border-style: dashed;
+  padding: 6px;
+}
+
+.team-slot-placeholder {
+  font-size: 0.6rem;
+  color: var(--hue-dark);
+}
+
+.team-slot-headshot {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.team-slot-headshot img,
+.team-slot-headshot canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.team-slot-name {
+  font-weight: 700;
+  font-size: 0.62rem;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+}
+
+.team-slot-role {
+  font-size: 0.55rem;
+  color: var(--hue-mid);
+  padding-bottom: 3px;
+}
+
+.team-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.team-type {
+  display: inline-block;
+  background: var(--hue-mid);
+  color: var(--paper);
+  font-weight: 700;
+  font-size: 0.68rem;
+  padding: 3px 8px;
+  border: 2px solid var(--hue-dark);
+  margin-bottom: 8px;
+}
+
+.team-buffs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.team-buff-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.62rem;
+  padding: 5px 8px;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+}
+
+.team-buff-name {
+  font-weight: 700;
+  color: var(--hue-dark);
+  flex: none;
+}
+
+.team-buff-values {
+  color: var(--text-body);
+  text-align: right;
+}
+
+.combat-cta {
+  flex: none;
+  margin: 8px 0 0;
+}
+
+.team-hint {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--text-body);
+}
+
+.team-items-heading {
+  flex: none;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--hue-mid);
+  margin: 0 0 4px;
+}
+
+.item-slots {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.item-slot {
+  flex: 1;
+  overflow: hidden;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  text-align: center;
+  display: block;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.item-slot--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 68px;
+  border-style: dashed;
+  padding: 6px;
+}
+
+.item-slot-headshot {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.item-slot-headshot img,
+.item-slot-headshot canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.item-slot-category {
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--hue-mid);
+  font-weight: 700;
+  margin-top: 2px;
+  display: block;
+}
+
+.item-slot-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+  padding-bottom: 3px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-diagram {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 2.6;
+  margin-bottom: 6px;
+}
+
+.team-diagram-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.team-diagram-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.team-diagram-avatar {
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 2px solid var(--hue-dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  background: var(--paper);
+  image-rendering: pixelated;
+}
+
+.team-diagram-avatar img,
+.team-diagram-avatar canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.team-diagram-name {
+  font-size: 0.58rem;
+  font-weight: 700;
+  background: var(--paper);
+  color: var(--hue-dark);
+  padding: 1px 5px;
+  border: 2px solid var(--hue-dark);
+  white-space: nowrap;
+}
+
+.team-diagram-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 10px;
+  font-size: 0.6rem;
+  color: var(--text-body);
+}
+
+.team-diagram-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-diagram-legend-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+.combat-screen {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.combat-row {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.combat-vs {
+  flex: none;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.62rem;
+  color: var(--hue-mid);
+  letter-spacing: 0.1em;
+}
+
+.combat-slot {
+  flex: 1;
+  max-width: 150px;
+  background: var(--paper);
+  overflow: hidden;
+  text-align: center;
+  opacity: 1;
+  transition: opacity 0.2s;
+  border: 2px solid var(--hue-dark);
+}
+
+.combat-slot--active {
+  border-color: var(--hue-mid);
+  box-shadow: 0 0 0 2px var(--hue-mid);
+}
+
+.combat-slot--dead {
+  opacity: 0.4;
+}
+
+.combat-slot-headshot {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.combat-slot-headshot img,
+.combat-slot-headshot canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.combat-slot-name {
+  font-weight: 700;
+  font-size: 0.6rem;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+}
+
+.combat-hp-bar {
+  height: 6px;
+  background: #fff;
+  border: 1px solid var(--hue-dark);
+  margin: 3px 6px 0;
+  overflow: hidden;
+}
+
+.combat-hp-fill {
+  height: 100%;
+  background: var(--hue-mid);
+  transition: width 0.3s ease;
+}
+
+.combat-hp-text {
+  font-size: 0.55rem;
+  color: var(--hue-dark);
+  padding-bottom: 3px;
+}
+
+.combat-parry-tag {
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+  background: var(--hue-bg);
+  margin: 0 4px 4px;
+  border: 1px solid var(--hue-dark);
+  padding: 1px 0;
+}
+
+.combat-item-tag {
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: var(--hue-dark);
+  background: var(--hue-bg);
+  margin: 0 4px 3px;
+  border: 1px solid var(--hue-dark);
+  padding: 1px 3px;
+  line-height: 1.2;
+}
+
+.combat-log {
+  flex: 1;
+  min-height: 0;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  color: var(--text-body);
+}
+
+.combat-log-line:last-child {
+  font-weight: 700;
+  color: var(--hue-dark);
+}
+
+.combat-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+.combat-actions .scan-again {
+  flex: 1;
+  margin-top: 0;
+}
+
+.combat-banner {
+  flex: none;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 8px;
+  border: 2px solid var(--hue-dark);
+}
+
+.combat-banner--player {
+  background: #C0DD97;
+  color: #173404;
+}
+
+.combat-banner--rival {
+  background: #F7C1C1;
+  color: #501313;
+}
+
+/* --- Nav inferior: parte del layout en flex (no position:fixed), asi el resto de la pantalla
+ * reserva su espacio en vez de necesitar padding compensatorio. --- */
+.bottom-nav {
+  flex: none;
+  display: flex;
+  background: var(--ink-2);
+  border-top: var(--bevel) solid var(--hue-mid);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.bottom-nav-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 7px 4px 6px;
+  background: transparent;
+  border: none;
+  border-top: 3px solid transparent;
+  cursor: pointer;
+  color: #8a7f8c;
+  font-family: var(--font-pixel);
+}
+
+.bottom-nav-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  filter: grayscale(1) brightness(0.8);
+}
+
+.bottom-nav-label {
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bottom-nav-tab--active {
+  color: var(--paper);
+  border-top-color: var(--hue-mid);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bottom-nav-tab--active .bottom-nav-icon {
+  filter: none;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  background: var(--hue-bg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 82vh;
+  border: var(--bevel) solid var(--hue-dark);
+  border-bottom: none;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  animation: sheet-slide-up 0.18s ease-out;
+}
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  position: sticky;
+  top: 0;
+  background: var(--hue-bg);
+}
+
+.sheet-header h3 {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--hue-dark);
+}
+
+.sheet-close {
+  background: var(--hue-mid);
+  color: var(--paper);
+  border: 2px solid var(--hue-dark);
+  width: 26px;
+  height: 26px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* --- Marco de rareza (ver RAREZA_TIER en palette.js): reusa la misma progresion de material que
+ * MATERIAL_COLORS (bronce -> plata -> oro), asi el criterio "mejor material = mas rareza" es
+ * consistente en toda la app. Cuanto mas alta la rareza, mas grueso/capas tiene el marco. Se
+ * aplica sobre elementos que YA tienen overflow:hidden (recortan el sprite adentro) — por eso
+ * nunca usa ::before/::after con offset negativo (quedarian recortados); solo border/outline/
+ * box-shadow, que SI se pintan por fuera del clip del propio elemento. */
+.rareza-frame--comun {
+  --rareza-c: #8a8a8a;
+  --rareza-c-dark: #5f5e5a;
+  border: 2px solid var(--rareza-c);
+}
+
+.rareza-frame--poco-comun {
+  --rareza-c: #b08d57;
+  --rareza-c-dark: #6b4d28;
+  border: 3px solid var(--rareza-c-dark);
+  box-shadow: inset 2px 2px 0 #cf9a5c, inset -2px -2px 0 #4a331b, 2px 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.rareza-frame--raro {
+  --rareza-c: #c9ced4;
+  --rareza-c-dark: #5b6167;
+  border: 3px solid var(--rareza-c-dark);
+  box-shadow: inset 2px 2px 0 #e8ecef, inset -2px -2px 0 #4a5054, 0 0 0 2px #c9ced4, 3px 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.rareza-frame--epico {
+  --rareza-c: #e6c34d;
+  --rareza-c-dark: #6b4d28;
+  border: 3px solid var(--rareza-c-dark);
+  box-shadow:
+    inset 2px 2px 0 #fbe6a3,
+    inset -2px -2px 0 #4a3a0f,
+    0 0 0 2px #e6c34d,
+    0 0 0 4px rgba(230, 195, 77, 0.35),
+    3px 3px 0 rgba(0, 0, 0, 0.35);
+  animation: rareza-epico-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes rareza-epico-glow {
+  0%, 100% { box-shadow: inset 2px 2px 0 #fbe6a3, inset -2px -2px 0 #4a3a0f, 0 0 0 2px #e6c34d, 0 0 0 4px rgba(230, 195, 77, 0.25), 3px 3px 0 rgba(0, 0, 0, 0.35); }
+  50% { box-shadow: inset 2px 2px 0 #fbe6a3, inset -2px -2px 0 #4a3a0f, 0 0 0 2px #e6c34d, 0 0 0 6px rgba(230, 195, 77, 0.6), 3px 3px 0 rgba(0, 0, 0, 0.35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rareza-frame--epico {
+    animation: none;
+  }
+}
+
+/* El retrato grande (Result) suma un segundo anillo real (outline) para leerse mas "de marco de
+ * cuadro" en Raro/Epico. */
+.result-portrait.rareza-frame--raro,
+.result-portrait.rareza-frame--epico {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: -6px;
+}
+
+/* --- Ornamentos de esquina, siempre hacia ADENTRO del marco (nunca offset negativo): estos
+ * elementos recortan el sprite con overflow:hidden, asi que cualquier cosa posicionada afuera del
+ * borde quedaria recortada. La "perla" de identificacion (esquina inferior derecha) va en las 4
+ * rarezas; los 3 acentos de las otras esquinas solo en Raro/Epico, ya que ahi es donde "el marco
+ * se vuelve mas ornamentado" empieza a notarse de verdad. Van en ::before/::after con z-index
+ * por arriba del sprite (no como background-image, que quedaria TAPADO por el canvas). */
+[class*="rareza-frame--"] {
+  position: relative;
+}
+
+[class*="rareza-frame--"]::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--rareza-c-dark);
+  background: radial-gradient(circle at 35% 30%, #fff 0%, var(--rareza-c) 45%, var(--rareza-c-dark) 100%);
+  pointer-events: none;
+}
+
+/* Solo arriba (2 esquinas): abajo-derecha ya es la perla y abajo-izquierda queda reservada para
+ * la insignia de clase (.clase-badge, solo en personajes) — asi nunca se pisan entre si. */
+.rareza-frame--raro::before,
+.rareza-frame--epico::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    radial-gradient(circle, var(--rareza-c) 0 55%, transparent 60%),
+    radial-gradient(circle, var(--rareza-c) 0 55%, transparent 60%);
+  background-size: 5px 5px;
+  background-position:
+    3px 3px,
+    calc(100% - 3px) 3px;
+}
+
+.codex-chip--new {
+  border-color: var(--hue-mid);
+  box-shadow: 2px 2px 0 var(--hue-mid);
+}
+
+/* --- Insignia de clase: misma logica que la perla de rareza (esquina opuesta, hacia adentro,
+ * por arriba del sprite) pero cuadrada — para distinguirla de un vistazo de la perla redonda de
+ * rareza — y con la inicial de la clase (ver CLASSES[...].symbol en data/abilities.js). Solo en
+ * personajes: los items no tienen clase, por eso es un span aparte que el JSX omite ahi, no una
+ * regla generica como rareza-frame. */
+.clase-badge {
+  position: absolute;
+  z-index: 3;
+  left: 3px;
+  bottom: 3px;
+  min-width: 9px;
+  height: 9px;
+  padding: 0 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--paper);
+  border: 1px solid var(--line);
+  pointer-events: none;
+}
