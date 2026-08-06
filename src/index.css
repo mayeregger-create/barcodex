@@ -1187,10 +1187,27 @@ button, input {
 .combat-hp-text {
   font-size: 0.55rem;
   color: var(--hue-dark);
-  padding-bottom: 3px;
+  padding-bottom: 2px;
 }
 
-.combat-parry-tag {
+/* Barra de Energia (ver core/abilities.js#ENERGY_MAX) — mas fina que la de HP, no compite con
+ * ella por atencion, pero deja ver de un vistazo cuan cerca esta alguien de su habilidad/Golpe
+ * definitivo. */
+.combat-energy-bar {
+  height: 4px;
+  background: #fff;
+  border: 1px solid var(--hue-dark);
+  margin: 2px 6px 4px;
+  overflow: hidden;
+}
+
+.combat-energy-fill {
+  height: 100%;
+  background: #4472ca;
+  transition: width 0.3s ease;
+}
+
+.combat-status-tag {
   font-size: 0.52rem;
   font-weight: 700;
   color: var(--hue-dark);
@@ -1198,6 +1215,16 @@ button, input {
   margin: 0 4px 4px;
   border: 1px solid var(--hue-dark);
   padding: 1px 0;
+}
+
+.combat-status-tag--parry {
+  color: #1d6e3f;
+  border-color: #1d6e3f;
+}
+
+.combat-status-tag--bad {
+  color: #a32d2d;
+  border-color: #a32d2d;
 }
 
 .combat-item-tag {
@@ -1239,6 +1266,12 @@ button, input {
 .combat-actions .scan-again {
   flex: 1;
   margin-top: 0;
+}
+
+.combat-actions .combat-speed-btn {
+  flex: none;
+  min-width: 150px;
+  margin: 0 auto;
 }
 
 .combat-banner {

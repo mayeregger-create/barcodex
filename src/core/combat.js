@@ -3,6 +3,8 @@
 // Este modulo da las funciones puras de calculo; el manejo de turnos / estado de partida
 // se deja a la capa de UI (ver los prototipos en el chat para un ejemplo de state machine).
 
+import { wheelModifier } from "./squad.js";
+
 /**
  * Daño basico de un ataque. Nunca menos de 1.
  * Divisor recalibrado en playtesting: con /2 la Defensa le comía casi todo el golpe a cualquier
@@ -71,4 +73,48 @@ export function resolveTurnOrder(charA, charB) {
     return charA.stats.Suerte >= charB.stats.Suerte ? "A" : "B";
   }
   return charA.stats.Velocidad > charB.stats.Velocidad ? "A" : "B";
+}
+
+/* --- A partir de aca: formulas que ya tienen en cuenta los buffs de escuadron (ver squad.js) y
+ * el estado de combate (battler), no solo el personaje "crudo" — ver forma de battler en
+ * CombatScreen.jsx#makeSide. Antes vivian duplicadas dentro de CombatScreen; ahora las usa
+ * tambien abilities.js, asi que quedan aca como fuente unica. --- */
+
+export function effectiveDefensa(battler) {
+  return battler.stats.Defensa * (1 + (battler.buff.defensa || 0) / 100);
+}
+
+export function effectiveCritChance(battler) {
+  const base = critChance(battler.stats.Suerte, battler.character.clase);
+  return Math.min(1, base + (battler.buff.critico || 0) / 100);
+}
+
+/**
+ * Golpe completo entre dos battlers (no personajes crudos): rueda elemental + critico + Defensa
+ * y Resistencia ya modificadas por buffs de escuadron. `mult` es el multiplicador propio de una
+ * habilidad (1 = ataque normal) — ver abilities.js.
+ */
+export function computeAttack(attacker, defender, mult = 1) {
+  const dmgMod = wheelModifier(attacker.character.continente, defender.character.continente).dmgMod;
+  const isCrit = Math.random() < effectiveCritChance(attacker);
+  let dmg = baseDamage(attacker.stats.Fuerza, effectiveDefensa(defender)) * dmgMod * mult;
+  if (isCrit) dmg *= 1.5;
+  const resist = defender.buff.resistencia || 0;
+  dmg = Math.max(1, Math.round(dmg * (1 - resist / 100)));
+  return { dmg, isCrit };
+}
+
+/**
+ * Aplica el estado defensivo puntual de quien recibe el golpe (Paso fantasma / Piel de corteza,
+ * ver abilities.js) a un daño ya calculado — se consume (una sola vez) al usarse. Devuelve el
+ * daño final y el `status` actualizado, nunca muta el original.
+ */
+export function applyIncoming(status, rawDmg) {
+  if (status.dodgeNext) {
+    return { dmg: 0, dodged: true, halved: false, status: { ...status, dodgeNext: false } };
+  }
+  if (status.halfDmgNext) {
+    return { dmg: Math.max(1, Math.round(rawDmg / 2)), dodged: false, halved: true, status: { ...status, halfDmgNext: false } };
+  }
+  return { dmg: rawDmg, dodged: false, halved: false, status };
 }
