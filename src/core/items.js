@@ -81,15 +81,6 @@ function scaleMagnitude(base, mult) {
   return Math.max(1, Math.round(base * (1 + mult)));
 }
 
-/** Codigo ISBN valido al azar (978/979) — para generar datos de prueba, no para escaneos reales. */
-export function randomItemCode() {
-  const prefix = Math.random() < 0.5 ? "978" : "979";
-  let rest = "";
-  for (let i = 0; i < 9; i++) rest += Math.floor(Math.random() * 10);
-  const d12 = prefix + rest;
-  return d12 + checkDigit(d12);
-}
-
 export function isValidISBN13(code13) {
   if (!/^\d{13}$/.test(code13)) return false;
   if (!(code13.startsWith("978") || code13.startsWith("979"))) return false;

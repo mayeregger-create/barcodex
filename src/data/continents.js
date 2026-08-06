@@ -21,6 +21,8 @@ export const HUES = {
   pink: { bg: "#FBEAF0", mid: "#D4537E", dark: "#72243E" },
 };
 export const CONTINENT_HUE = { America: "coral", Europa: "purple", Asia: "teal", Africa: "amber", Oceania: "pink" };
+// Fondo del banner "hero" en la ficha de personaje (Result) — ver CharacterCard.jsx.
+export const CONTINENT_BG = { America: "america", Europa: "europa", Asia: "asia", Africa: "africa", Oceania: "oceania" };
 export const CLASS_HUE = { Guerrero: "coral", Picaro: "teal", Tanque: "amber", Mago: "purple", Bardo: "pink" };
 
 // Rangos GS1 oficiales (por pais, agrupados por continente). Ver docs/diseño_juego_codigo_barras.md seccion 3.

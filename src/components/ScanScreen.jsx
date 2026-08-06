@@ -1,35 +1,11 @@
 import { useState } from "react";
 import BarcodeScanner from "./BarcodeScanner.jsx";
 
-/** Pantalla de "escaneo": camara en vivo (real, via BarcodeScanner) o tipear los 12 digitos a
- * mano. El 13avo (verificador) lo calcula el motor de reglas en los dos casos — ver App.jsx /
- * core/character.js#checkDigit. */
-export default function ScanScreen({ onScan, onCodex, onTeam, onRandomGenerate }) {
-  const [digits, setDigits] = useState("");
-  const [error, setError] = useState("");
-  const [generated, setGenerated] = useState(false);
+/** Pantalla de escaneo: la cámara es la única forma de sumar códigos (ver BarcodeScanner.jsx).
+ * Esta vista de "reposo" es solo la invitación a escanear — Codex y Equipo ya están a un tab de
+ * distancia en BottomNav, no hace falta duplicarlos acá. */
+export default function ScanScreen({ onScan }) {
   const [showCamera, setShowCamera] = useState(false);
-
-  const handleRandomGenerate = () => {
-    onRandomGenerate();
-    setGenerated(true);
-    setTimeout(() => setGenerated(false), 2000);
-  };
-
-  const handleChange = (e) => {
-    const clean = e.target.value.replace(/\D/g, "").slice(0, 12);
-    setDigits(clean);
-    if (error) setError("");
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (digits.length !== 12) {
-      setError("Ingresá exactamente 12 dígitos.");
-      return;
-    }
-    onScan(digits);
-  };
 
   const handleDetected = (digits12) => {
     setShowCamera(false);
@@ -41,48 +17,16 @@ export default function ScanScreen({ onScan, onCodex, onTeam, onRandomGenerate }
   }
 
   return (
-    <form className="scan-screen" onSubmit={handleSubmit}>
-      <button type="button" className="scan-again" onClick={() => setShowCamera(true)}>
-        📷 Escanear con cámara
-      </button>
+    <div className="scan-screen">
+      <div className="scan-screen-art" />
+      <div className="scan-screen-overlay" />
 
-      <div className="scan-or">o escribí el código</div>
-
-      <label htmlFor="barcode-input">Código de barras (12 dígitos)</label>
-      <input
-        id="barcode-input"
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        placeholder="000000000000"
-        value={digits}
-        onChange={handleChange}
-        maxLength={12}
-        autoFocus
-      />
-      <div className="scan-count">{digits.length}/12</div>
-      {error && <div className="scan-error">{error}</div>}
-      <button type="submit" disabled={digits.length !== 12}>
-        Escanear
-      </button>
-
-      <div className="result-actions">
-        <button type="button" className="scan-again scan-again--secondary" onClick={onCodex}>
-          Codex
-        </button>
-        <button type="button" className="scan-again scan-again--secondary" onClick={onTeam}>
-          Equipo
+      <div className="scan-screen-content">
+        <p className="scan-screen-tagline">Apuntá la cámara a un código de barras</p>
+        <button type="button" className="scan-again scan-cta" onClick={() => setShowCamera(true)}>
+          📷 Escanear
         </button>
       </div>
-
-      {onRandomGenerate && (
-        <div className="dev-tools">
-          <button type="button" className="dev-tools-btn" onClick={handleRandomGenerate}>
-            🎲 Reiniciar datos de prueba (6 + 6)
-          </button>
-          {generated && <span className="dev-tools-confirm">✓ 6 personajes + 6 ítems (reemplazados)</span>}
-        </div>
-      )}
-    </form>
+    </div>
   );
 }

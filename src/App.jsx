@@ -1,15 +1,8 @@
-import { useEffect, useState } from "react";
-import { generateCharacter, checkDigit, randomCode } from "./core/character.js";
-import { generateItem, randomItemCode } from "./core/items.js";
+import { useState } from "react";
+import { generateCharacter, checkDigit } from "./core/character.js";
+import { generateItem } from "./core/items.js";
 import { HUES, CONTINENT_HUE } from "./data/continents.js";
-import {
-  addScannedCharacterCode,
-  addScannedItemCode,
-  getScannedCharacterCodes,
-  getScannedItemCodes,
-  setScannedCharacterCodes,
-  setScannedItemCodes,
-} from "./storage.js";
+import { addScannedCharacterCode, addScannedItemCode } from "./storage.js";
 import TitleScreen from "./components/TitleScreen.jsx";
 import ScanReveal from "./components/ScanReveal.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
@@ -34,16 +27,6 @@ function resolveScan(digits12) {
 // Pantallas donde la barra inferior queda oculta: son tomas de pantalla completa
 // (titulo, revelación de escaneo, combate en curso), no "bases" entre las que navegar.
 const NAV_HIDDEN_ON = ["title", "result", "combat"];
-
-// Cantidad fija de datos de prueba mientras no hay cámara real: ni la carga automática ni el
-// botón de dev-tools generan mas que esto, para no saturar la cola de imagenes de Pollinations.
-const TEST_DATA_COUNT = 6;
-
-function generateUniqueCodes(count, generateFn) {
-  const codes = new Set();
-  while (codes.size < count) codes.add(generateFn());
-  return [...codes];
-}
 
 export default function App() {
   const [screen, setScreen] = useState("title"); // "title" | "scan" | "result" | "codex" | "team" | "combat"
@@ -70,20 +53,6 @@ export default function App() {
     setResult(null);
     setScreen("scan");
   };
-
-  /** Solo para pruebas: reemplaza la colección por exactamente TEST_DATA_COUNT + TEST_DATA_COUNT
-   * al azar (nunca acumula de más — reduce la presión sobre la cola de imágenes). */
-  const resetTestData = () => {
-    setScannedCharacterCodes(generateUniqueCodes(TEST_DATA_COUNT, randomCode));
-    setScannedItemCodes(generateUniqueCodes(TEST_DATA_COUNT, randomItemCode));
-  };
-
-  // Primera carga sin datos (celular nuevo, storage vacío): precarga el set de prueba solo.
-  useEffect(() => {
-    if (getScannedCharacterCodes().length === 0 && getScannedItemCodes().length === 0) {
-      resetTestData();
-    }
-  }, []);
 
   const goCodex = () => setScreen("codex");
   const goTeam = () => setScreen("team");
@@ -116,12 +85,10 @@ export default function App() {
         </header>
       )}
 
-      <div className={`app-content${screen === "title" ? " app-content--bleed" : ""}`}>
+      <div className={`app-content${["title", "scan"].includes(screen) ? " app-content--bleed" : ""}`}>
         {screen === "title" && <TitleScreen onStart={goScan} />}
 
-        {screen === "scan" && (
-          <ScanScreen onScan={handleScan} onCodex={goCodex} onTeam={goTeam} onRandomGenerate={resetTestData} />
-        )}
+        {screen === "scan" && <ScanScreen onScan={handleScan} />}
 
         {screen === "result" && result?.kind === "character" && (
           <CharacterCard character={result.data} onScanAnother={goScan} onCodex={goCodex} />

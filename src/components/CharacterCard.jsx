@@ -1,5 +1,6 @@
 import { RAREZA_TIER, STAT_ACCENT } from "../core/pixelArt/palette.js";
 import { CLASSES } from "../data/abilities.js";
+import { CONTINENT_BG } from "../data/continents.js";
 import PixelSprite from "./PixelSprite.jsx";
 import Barcode from "./Barcode.jsx";
 
@@ -22,6 +23,11 @@ export default function CharacterCard({ character, onScanAnother, onCodex, onBac
   return (
     <div className="result-card result-card--character">
       <div className="result-hero">
+        <div
+          className="result-hero-art"
+          style={{ backgroundImage: `url(/continent-bg-${CONTINENT_BG[continente]}.jpg)` }}
+        />
+        <div className="result-hero-overlay" />
         <Portrait character={character} />
         <div className="result-heading">
           <div className="result-badge">{rareza}</div>
