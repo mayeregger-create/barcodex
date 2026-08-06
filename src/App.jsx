@@ -11,6 +11,7 @@ import {
   setScannedItemCodes,
 } from "./storage.js";
 import TitleScreen from "./components/TitleScreen.jsx";
+import ScanReveal from "./components/ScanReveal.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
 import CharacterCard from "./components/CharacterCard.jsx";
 import ItemCard from "./components/ItemCard.jsx";
@@ -49,6 +50,9 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [combatTeam, setCombatTeam] = useState(null);
   const [combatItems, setCombatItems] = useState(null);
+  // Código de la revelación en curso: la ficha de resultado ya está montada y lista debajo (ver
+  // render mas abajo), este overlay solo dramatiza la transición hacia ella.
+  const [revealCode, setRevealCode] = useState(null);
 
   const handleScan = (digits12) => {
     const scanned = resolveScan(digits12);
@@ -59,6 +63,7 @@ export default function App() {
     }
     setResult(scanned);
     setScreen("result");
+    setRevealCode(scanned.data.code);
   };
 
   const goScan = () => {
@@ -136,6 +141,8 @@ export default function App() {
       </div>
 
       {showNav && <BottomNav active={activeTab} onNavigate={handleNavigate} />}
+
+      {revealCode && <ScanReveal code={revealCode} onFinish={() => setRevealCode(null)} />}
     </div>
   );
 }

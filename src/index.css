@@ -1519,3 +1519,185 @@ button, input {
   padding: 14px 8px;
   margin-top: 4px;
 }
+
+/* --- Secuencia de revelado al escanear (ScanReveal.jsx) ---------------------------------------
+ * Overlay a pantalla completa por encima de la ficha de resultado, que ya está montada y lista
+ * debajo: digitos girando al azar -> se fijan de izquierda a derecha -> flash -> blanco total ->
+ * se despega revelando la ficha real que ya estaba ahí. Las duraciones de whiteout/clear llegan
+ * por variable CSS desde el componente, para no duplicar los tiempos en dos lugares. */
+@keyframes scan-reveal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.scan-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: var(--ink);
+  animation: scan-reveal-fade-in 0.15s ease both;
+  transition: opacity var(--clear-ms, 450ms) ease, background-color var(--whiteout-ms, 350ms) ease;
+}
+
+.scan-reveal--whiteout,
+.scan-reveal--clear {
+  background: #fff8ec;
+}
+
+.scan-reveal--clear {
+  opacity: 0;
+}
+
+.scan-reveal-barcode {
+  position: relative;
+  background: var(--paper);
+  padding: 16px 12px 12px;
+  border: 3px solid var(--line);
+  box-shadow: 4px 4px 0 var(--line);
+  transition: opacity var(--whiteout-ms, 350ms) ease;
+}
+
+.scan-reveal--whiteout .scan-reveal-barcode,
+.scan-reveal--clear .scan-reveal-barcode {
+  opacity: 0;
+}
+
+.scan-reveal-barcode-svg {
+  display: block;
+  width: 240px;
+  height: auto;
+  color: var(--line);
+}
+
+.scan-reveal-scanbeam {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  top: 10%;
+  background: linear-gradient(90deg, transparent, #f2b134, transparent);
+  mix-blend-mode: multiply;
+  animation: scan-reveal-beam 0.9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes scan-reveal-beam {
+  0% { top: 10%; opacity: 0.2; }
+  50% { top: 82%; opacity: 0.9; }
+  100% { top: 10%; opacity: 0.2; }
+}
+
+.scan-reveal--flash .scan-reveal-scanbeam,
+.scan-reveal--whiteout .scan-reveal-scanbeam,
+.scan-reveal--clear .scan-reveal-scanbeam {
+  animation-play-state: paused;
+  opacity: 0;
+}
+
+.scan-reveal-groups {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  height: 6px;
+  display: flex;
+  pointer-events: none;
+}
+
+.scan-reveal-group {
+  flex: 1;
+  margin: 0 2px;
+  opacity: 0.2;
+  animation: scan-reveal-group-pulse 1.6s ease-in-out infinite;
+}
+
+.scan-reveal-group--0 { background: #e0563f; animation-delay: 0s; }
+.scan-reveal-group--1 { background: #f2b134; animation-delay: 0.2s; }
+.scan-reveal-group--2 { background: #4f9d69; animation-delay: 0.4s; }
+.scan-reveal-group--3 { background: #4472ca; animation-delay: 0.6s; }
+
+@keyframes scan-reveal-group-pulse {
+  0%, 100% { opacity: 0.2; transform: scaleY(1); }
+  50% { opacity: 1; transform: scaleY(2); }
+}
+
+.scan-reveal--flash .scan-reveal-groups,
+.scan-reveal--whiteout .scan-reveal-groups,
+.scan-reveal--clear .scan-reveal-groups {
+  animation-play-state: paused;
+  opacity: 0;
+}
+
+.scan-reveal-digits {
+  display: flex;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+  transition: opacity var(--whiteout-ms, 350ms) ease;
+}
+
+.scan-reveal--whiteout .scan-reveal-digits,
+.scan-reveal--clear .scan-reveal-digits {
+  opacity: 0;
+}
+
+.scan-reveal-digit {
+  width: 17px;
+  text-align: center;
+  font-size: 1rem;
+  color: var(--paper);
+  background: var(--ink-2);
+  border: 2px solid var(--line);
+  padding: 4px 0;
+}
+
+.scan-reveal-digit--locked {
+  color: #171018;
+  background: #f2b134;
+  border-color: var(--line);
+}
+
+.scan-reveal-hint {
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+  opacity: 0.7;
+  animation: scan-reveal-blink 1s steps(2) infinite;
+  transition: opacity var(--whiteout-ms, 350ms) ease;
+}
+
+@keyframes scan-reveal-blink {
+  50% { opacity: 0.25; }
+}
+
+.scan-reveal--whiteout .scan-reveal-hint,
+.scan-reveal--clear .scan-reveal-hint {
+  animation-play-state: paused;
+  opacity: 0;
+}
+
+.scan-reveal-flashpulse {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 60ms ease;
+}
+
+.scan-reveal--flash .scan-reveal-flashpulse {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-reveal,
+  .scan-reveal-scanbeam,
+  .scan-reveal-group,
+  .scan-reveal-hint {
+    animation: none !important;
+  }
+}
