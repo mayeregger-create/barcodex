@@ -1126,13 +1126,14 @@ button, input {
 }
 
 .combat-slot {
+  position: relative;
   flex: 1;
   max-width: 150px;
   background: var(--paper);
   overflow: hidden;
   text-align: center;
   opacity: 1;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, box-shadow 0.2s ease, border-color 0.2s ease;
   border: 2px solid var(--hue-dark);
 }
 
@@ -1144,6 +1145,92 @@ button, input {
 .combat-slot--dead {
   opacity: 0.4;
 }
+
+/* --- Ayuda visual de combate (CombatFx.jsx): highlight de quien actua, numeros flotantes de
+ * daño/cura, temblor de quien recibe el golpe. Todo transitorio, se limpia solo — ver
+ * HIGHLIGHT_MS/FLOATER_MS alla. Los numeros suben con `top` en % (no translateY en px) para
+ * quedarse siempre adentro del recuadro sin tocar el overflow:hidden de arriba. --- */
+.combat-fx--attack {
+  box-shadow: 0 0 0 3px #f2b134;
+  border-color: #f2b134;
+}
+
+.combat-fx--parry {
+  box-shadow: 0 0 0 3px #4472ca;
+  border-color: #4472ca;
+}
+
+.combat-fx--ability {
+  box-shadow: 0 0 0 3px #b04fe0;
+  border-color: #b04fe0;
+}
+
+.combat-fx--block {
+  box-shadow: 0 0 0 3px #1d9e75;
+  border-color: #1d9e75;
+}
+
+.combat-slot-inner--shake {
+  animation: combat-shake 0.4s ease;
+}
+
+@keyframes combat-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+.combat-fx-label {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--paper);
+  background: rgba(23, 16, 24, 0.85);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  white-space: nowrap;
+  z-index: 3;
+  animation: combat-fx-label-pop 0.2s ease;
+}
+
+@keyframes combat-fx-label-pop {
+  from { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+.combat-fx-floaters {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.combat-fx-num {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translateX(-50%);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-pixel);
+  text-shadow: 1px 1px 0 var(--line);
+  animation: combat-fx-num-rise 0.9s ease-out forwards;
+}
+
+@keyframes combat-fx-num-rise {
+  0% { top: 42%; opacity: 1; }
+  100% { top: 8%; opacity: 0; }
+}
+
+.combat-fx-num--dmg { color: #d43b3b; }
+.combat-fx-num--ability { color: #b04fe0; }
+.combat-fx-num--heal { color: #3fae5c; }
+.combat-fx-num--dodge { color: #f2b134; }
+.combat-fx-num--bad { color: #a32d2d; }
 
 .combat-slot-headshot {
   width: 100%;

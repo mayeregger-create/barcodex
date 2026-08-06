@@ -114,11 +114,19 @@ export function applyAbility(attacker, defender) {
   let newAttacker = { ...attacker, status: { ...attacker.status } };
   let newDefender = { ...defender, status: { ...defender.status } };
   const log = [];
+  // "role" en vez de side/idx: applyAbility no sabe en que posicion del equipo esta cada uno,
+  // eso lo agrega quien la llama (CombatScreen.jsx#performAction), que si lo sabe.
+  const events = [{ role: "actor", kind: "actor", action: "ability" }];
 
   const dealDamage = (mult) => {
     const { dmg, isCrit, dodged, halved, status } = resolveHit(newAttacker, newDefender.status, newDefender, mult);
     newDefender.status = status;
     newDefender.hp = Math.max(0, newDefender.hp - dmg);
+    if (dodged) {
+      events.push({ role: "target", kind: "dodge" });
+    } else {
+      events.push({ role: "target", kind: "damage", amount: dmg, source: "ability" });
+    }
     return { dmg, isCrit, dodged, halved };
   };
 
@@ -167,6 +175,7 @@ export function applyAbility(attacker, defender) {
         log.push(`${attacker.character.nombre} arriesga con Fortuna del mercader: ¡doble daño, ${dmg}!${isCrit ? " (¡crítico!)" : ""}`);
       } else {
         log.push(`${attacker.character.nombre} arriesga con Fortuna del mercader... y pierde el turno.`);
+        events.push({ role: "actor", kind: "miss" });
       }
       break;
     }
@@ -192,7 +201,7 @@ export function applyAbility(attacker, defender) {
   }
 
   newAttacker = setCooldown(newAttacker, name);
-  return { attacker: newAttacker, defender: newDefender, log };
+  return { attacker: newAttacker, defender: newDefender, log, events };
 }
 
 /**
@@ -203,11 +212,13 @@ export function applyAbility(attacker, defender) {
 export function tickTurnStart(battler) {
   let next = { ...battler, status: { ...battler.status } };
   const log = [];
+  const events = [];
 
   if (next.status.paralized) {
     next.status.paralized = false;
     log.push(`${next.character.nombre} está paralizado y pierde su turno.`);
-    return { battler: next, skip: true, log };
+    events.push({ role: "self", kind: "paralized" });
+    return { battler: next, skip: true, log, events };
   }
 
   if (next.status.regenTurnsLeft > 0) {
@@ -215,6 +226,7 @@ export function tickTurnStart(battler) {
     next.hp = Math.min(next.character.hpMax, next.hp + heal);
     next.status.regenTurnsLeft -= 1;
     log.push(`${next.character.nombre} se regenera ${heal} HP.`);
+    events.push({ role: "self", kind: "heal", amount: heal });
   }
 
   if (next.buff.energia > 0) {
@@ -223,5 +235,5 @@ export function tickTurnStart(battler) {
 
   if (next.abilityCooldown > 0) next.abilityCooldown -= 1;
 
-  return { battler: next, skip: false, log };
+  return { battler: next, skip: false, log, events };
 }

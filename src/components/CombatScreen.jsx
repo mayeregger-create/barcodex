@@ -5,6 +5,7 @@ import { computeAttack, resolveParry, resolveTurnOrder, applyIncoming } from "..
 import { decideAction, applyAbility, tickTurnStart, ENERGY_MAX } from "../core/abilities.js";
 import { applyItemToStats, itemLabel } from "../core/items.js";
 import PixelSprite from "./PixelSprite.jsx";
+import CombatFx from "./CombatFx.jsx";
 
 /** Rival de CPU: en el juego final seria otro jugador — para pruebas, un escuadron al azar. */
 function randomRivalTeam() {
@@ -54,19 +55,26 @@ function initialBattle(playerTeam, playerItems, rivalTeam) {
   return {
     player, rival, playerActive: 0, rivalActive: 0, turn,
     log: [`${player[0].character.nombre} vs. ${rival[0].character.nombre} — ¡comienza el combate!`],
-    phase: "battle", winner: null,
+    phase: "battle", winner: null, events: [], eventSeq: 0,
   };
 }
 
+/**
+ * Ejecuta la accion de `side` este turno y devuelve el nuevo estado, incluyendo `events`: una
+ * lista plana de { side, idx, kind, ... } que CombatScreen usa SOLO para disparar la ayuda
+ * visual (highlight/temblor/numeros flotantes) — no afecta la simulacion en si.
+ */
 function performAction(state, side, action) {
   const attackerArr = side === "player" ? state.player : state.rival;
   const defenderArr = side === "player" ? state.rival : state.player;
   const attackerIdx = side === "player" ? state.playerActive : state.rivalActive;
   const defenderIdx = side === "player" ? state.rivalActive : state.playerActive;
+  const defenderSide = side === "player" ? "rival" : "player";
   const attacker = attackerArr[attackerIdx];
   const defender = defenderArr[defenderIdx];
 
   const log = [...state.log];
+  const events = [];
   let newAttacker;
   let newDefender;
 
@@ -75,24 +83,32 @@ function performAction(state, side, action) {
     newAttacker = result.attacker;
     newDefender = result.defender;
     log.push(...result.log);
+    for (const ev of result.events) {
+      if (ev.role === "actor") events.push({ side, idx: attackerIdx, ...ev });
+      else events.push({ side: defenderSide, idx: defenderIdx, ...ev });
+    }
   } else if (action === "parry") {
     newAttacker = { ...attacker, parryArmed: true };
     newDefender = { ...defender };
     log.push(`${attacker.character.nombre} se prepara para bloquear.`);
+    events.push({ side, idx: attackerIdx, kind: "actor", action: "parry" });
   } else {
     newAttacker = { ...attacker, parryArmed: false };
     newDefender = { ...defender };
+    events.push({ side, idx: attackerIdx, kind: "actor", action: "attack" });
     if (defender.parryArmed) {
       const rel = relation(attacker.character.continente, defender.character.continente);
       const { dmg: rawDmg } = computeAttack(attacker, defender);
       const result = resolveParry({ ...defender.character, stats: defender.stats }, rel, rawDmg);
       newDefender.parryArmed = false;
       if (result.blocked) {
+        events.push({ side: defenderSide, idx: defenderIdx, kind: "block" });
         if (result.reflectDmg > 0) {
           const applied = applyIncoming(newAttacker.status, result.reflectDmg);
           newAttacker.status = applied.status;
           newAttacker.hp = Math.max(0, attacker.hp - applied.dmg);
           log.push(`${defender.character.nombre} bloquea y refleja ${applied.dmg} de daño a ${attacker.character.nombre}.`);
+          events.push({ side, idx: attackerIdx, kind: "damage", amount: applied.dmg, source: "reflect" });
         } else if (result.energyGain > 0) {
           newDefender.energy = Math.min(ENERGY_MAX, defender.energy + result.energyGain);
           log.push(`${defender.character.nombre} bloquea (afín) y gana Energía.`);
@@ -104,6 +120,7 @@ function performAction(state, side, action) {
         newDefender.status = applied.status;
         newDefender.hp = Math.max(0, defender.hp - applied.dmg);
         log.push(`${attacker.character.nombre} ataca — ${defender.character.nombre} falla el bloqueo y recibe ${applied.dmg}.`);
+        events.push({ side: defenderSide, idx: defenderIdx, kind: "damage", amount: applied.dmg, source: "attack" });
       }
     } else {
       const { dmg: rawDmg, isCrit } = computeAttack(attacker, defender);
@@ -112,11 +129,13 @@ function performAction(state, side, action) {
       newDefender.hp = Math.max(0, defender.hp - applied.dmg);
       if (applied.dodged) {
         log.push(`${attacker.character.nombre} ataca — ¡${defender.character.nombre} esquiva el golpe!`);
+        events.push({ side: defenderSide, idx: defenderIdx, kind: "dodge" });
       } else {
         log.push(
           `${attacker.character.nombre} ataca a ${defender.character.nombre} por ${applied.dmg}` +
           `${isCrit ? " (¡Crítico!)" : ""}${applied.halved ? " (mitigado a la mitad)" : ""}.`
         );
+        events.push({ side: defenderSide, idx: defenderIdx, kind: "damage", amount: applied.dmg, source: "attack" });
       }
     }
   }
@@ -157,7 +176,7 @@ function performAction(state, side, action) {
     }
   }
 
-  return { player: newPlayer, rival: newRival, playerActive, rivalActive, turn, log, phase, winner };
+  return { player: newPlayer, rival: newRival, playerActive, rivalActive, turn, log, phase, winner, events };
 }
 
 /** Un paso completo del autobattle: tickea el estado de quien actua (paralisis/regen/energia
@@ -170,7 +189,8 @@ function advanceTurn(state) {
   const defenderArr = side === "player" ? state.rival : state.player;
   const defenderIdx = side === "player" ? state.rivalActive : state.playerActive;
 
-  const { battler: tickedAttacker, skip, log: tickLog } = tickTurnStart(attackerArr[attackerIdx]);
+  const { battler: tickedAttacker, skip, log: tickLog, events: tickEvents } = tickTurnStart(attackerArr[attackerIdx]);
+  const taggedTickEvents = tickEvents.map((ev) => ({ side, idx: attackerIdx, ...ev }));
 
   const newAttackerArr = [...attackerArr];
   newAttackerArr[attackerIdx] = tickedAttacker;
@@ -179,12 +199,18 @@ function advanceTurn(state) {
   const stateAfterTick = { ...state, player: newPlayer, rival: newRival, log: [...state.log, ...tickLog] };
 
   if (skip) {
-    return { ...stateAfterTick, turn: side === "player" ? "rival" : "player" };
+    return {
+      ...stateAfterTick,
+      turn: side === "player" ? "rival" : "player",
+      events: taggedTickEvents,
+      eventSeq: state.eventSeq + 1,
+    };
   }
 
   const opponent = defenderArr[defenderIdx];
   const action = decideAction(tickedAttacker, opponent);
-  return performAction(stateAfterTick, side, action);
+  const result = performAction(stateAfterTick, side, action);
+  return { ...result, events: [...taggedTickEvents, ...result.events], eventSeq: state.eventSeq + 1 };
 }
 
 const SPEED_DELAY = { 1: 1100, 2: 550 };
@@ -209,19 +235,25 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
 
   return (
     <div className="combat-screen">
-      <div className="combat-row">
-        {battle.player.map((b, i) => (
-          <CombatSlot key={b.character.code} battler={b} active={i === battle.playerActive} />
-        ))}
-      </div>
+      <CombatFx events={battle.events} eventSeq={battle.eventSeq}>
+        {(fxFor) => (
+          <>
+            <div className="combat-row">
+              {battle.player.map((b, i) => (
+                <CombatSlot key={b.character.code} battler={b} active={i === battle.playerActive} fx={fxFor("player", i)} />
+              ))}
+            </div>
 
-      <div className="combat-vs">VS</div>
+            <div className="combat-vs">VS</div>
 
-      <div className="combat-row">
-        {battle.rival.map((b, i) => (
-          <CombatSlot key={b.character.code} battler={b} active={i === battle.rivalActive} />
-        ))}
-      </div>
+            <div className="combat-row">
+              {battle.rival.map((b, i) => (
+                <CombatSlot key={b.character.code} battler={b} active={i === battle.rivalActive} fx={fxFor("rival", i)} />
+              ))}
+            </div>
+          </>
+        )}
+      </CombatFx>
 
       <div className="combat-log pixel-scroll">
         {battle.log.slice(-8).map((line, i) => (
@@ -259,7 +291,7 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
   );
 }
 
-function CombatSlot({ battler, active }) {
+function CombatSlot({ battler, active, fx }) {
   const { character, item, hp, alive, parryArmed, energy, status } = battler;
   const hpPct = Math.max(0, Math.round((hp / character.hpMax) * 100));
   const energyPct = Math.max(0, Math.round((energy / ENERGY_MAX) * 100));
@@ -269,25 +301,39 @@ function CombatSlot({ battler, active }) {
         "combat-slot",
         active ? "combat-slot--active" : "",
         !alive ? "combat-slot--dead" : "",
+        fx?.turnCls || "",
       ].join(" ").trim()}
     >
-      <div className="combat-slot-headshot">
-        <PixelSprite character={character} />
+      <div
+        className={`combat-slot-inner${(fx?.hitSeq ?? 0) > 0 ? " combat-slot-inner--shake" : ""}`}
+        key={fx?.hitSeq ?? 0}
+      >
+        <div className="combat-slot-headshot">
+          <PixelSprite character={character} />
+        </div>
+        <div className="combat-slot-name">{character.nombre}</div>
+        <div className="combat-hp-bar">
+          <div className="combat-hp-fill" style={{ width: `${hpPct}%` }} />
+        </div>
+        <div className="combat-hp-text">{Math.max(0, Math.round(hp))} / {character.hpMax}</div>
+        <div className="combat-energy-bar" title="Energía">
+          <div className="combat-energy-fill" style={{ width: `${energyPct}%` }} />
+        </div>
+        {item && <div className="combat-item-tag">{itemLabel(item)}</div>}
+        {alive && parryArmed && <div className="combat-status-tag combat-status-tag--parry">Parry listo</div>}
+        {alive && status.dodgeNext && <div className="combat-status-tag">Esquivará</div>}
+        {alive && status.halfDmgNext && <div className="combat-status-tag">Piel dura</div>}
+        {alive && status.regenTurnsLeft > 0 && <div className="combat-status-tag">Regenerando</div>}
+        {alive && status.paralized && <div className="combat-status-tag combat-status-tag--bad">Paralizado</div>}
       </div>
-      <div className="combat-slot-name">{character.nombre}</div>
-      <div className="combat-hp-bar">
-        <div className="combat-hp-fill" style={{ width: `${hpPct}%` }} />
+
+      {fx?.turnLabel && <div className="combat-fx-label">{fx.turnLabel}</div>}
+
+      <div className="combat-fx-floaters">
+        {(fx?.floaters || []).map((f) => (
+          <div key={f.id} className={`combat-fx-num ${f.cls}`}>{f.text}</div>
+        ))}
       </div>
-      <div className="combat-hp-text">{Math.max(0, Math.round(hp))} / {character.hpMax}</div>
-      <div className="combat-energy-bar" title="Energía">
-        <div className="combat-energy-fill" style={{ width: `${energyPct}%` }} />
-      </div>
-      {item && <div className="combat-item-tag">{itemLabel(item)}</div>}
-      {alive && parryArmed && <div className="combat-status-tag combat-status-tag--parry">Parry listo</div>}
-      {alive && status.dodgeNext && <div className="combat-status-tag">Esquivará</div>}
-      {alive && status.halfDmgNext && <div className="combat-status-tag">Piel dura</div>}
-      {alive && status.regenTurnsLeft > 0 && <div className="combat-status-tag">Regenerando</div>}
-      {alive && status.paralized && <div className="combat-status-tag combat-status-tag--bad">Paralizado</div>}
     </div>
   );
 }
