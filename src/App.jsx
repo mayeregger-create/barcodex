@@ -10,6 +10,7 @@ import {
   setScannedCharacterCodes,
   setScannedItemCodes,
 } from "./storage.js";
+import TitleScreen from "./components/TitleScreen.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
 import CharacterCard from "./components/CharacterCard.jsx";
 import ItemCard from "./components/ItemCard.jsx";
@@ -30,8 +31,8 @@ function resolveScan(digits12) {
 }
 
 // Pantallas donde la barra inferior queda oculta: son tomas de pantalla completa
-// (revelación de escaneo, combate en curso), no "bases" entre las que navegar.
-const NAV_HIDDEN_ON = ["result", "combat"];
+// (titulo, revelación de escaneo, combate en curso), no "bases" entre las que navegar.
+const NAV_HIDDEN_ON = ["title", "result", "combat"];
 
 // Cantidad fija de datos de prueba mientras no hay cámara real: ni la carga automática ni el
 // botón de dev-tools generan mas que esto, para no saturar la cola de imagenes de Pollinations.
@@ -44,7 +45,7 @@ function generateUniqueCodes(count, generateFn) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState("scan"); // "scan" | "result" | "codex" | "team" | "combat"
+  const [screen, setScreen] = useState("title"); // "title" | "scan" | "result" | "codex" | "team" | "combat"
   const [result, setResult] = useState(null);
   const [combatTeam, setCombatTeam] = useState(null);
   const [combatItems, setCombatItems] = useState(null);
@@ -99,15 +100,20 @@ export default function App() {
     : HUES.amber;
 
   const showNav = !NAV_HIDDEN_ON.includes(screen);
+  const showHeader = screen !== "title";
   const activeTab = screen === "result" ? "scan" : screen;
 
   return (
     <div className="app" style={{ "--hue-bg": hue.bg, "--hue-mid": hue.mid, "--hue-dark": hue.dark }}>
-      <header className="app-header">
-        <h1>BarCodex</h1>
-      </header>
+      {showHeader && (
+        <header className="app-header">
+          <h1>BarCodex</h1>
+        </header>
+      )}
 
-      <div className="app-content">
+      <div className={`app-content${screen === "title" ? " app-content--bleed" : ""}`}>
+        {screen === "title" && <TitleScreen onStart={goScan} />}
+
         {screen === "scan" && (
           <ScanScreen onScan={handleScan} onCodex={goCodex} onTeam={goTeam} onRandomGenerate={resetTestData} />
         )}
