@@ -278,6 +278,22 @@ button, input {
   text-align: center;
 }
 
+.scan-onboard-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.scan-onboard-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 248, 236, 0.25);
+}
+
+.scan-onboard-dot--done {
+  background: #f2b134;
+}
+
 .scan-steps {
   display: flex;
   align-items: center;
@@ -953,6 +969,21 @@ button, input {
   padding: 0;
 }
 
+.team-slot--empty-pulse {
+  animation: team-slot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes team-slot-pulse {
+  0%, 100% { box-shadow: none; border-color: var(--hue-dark); }
+  50% { box-shadow: 0 0 0 3px rgba(242, 177, 52, 0.45); border-color: #f2b134; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-slot--empty-pulse {
+    animation: none;
+  }
+}
+
 .team-slot--empty {
   display: flex;
   align-items: center;
@@ -1052,6 +1083,15 @@ button, input {
   font-size: 0.68rem;
   line-height: 1.5;
   color: var(--text-body);
+}
+
+.team-guide-hint {
+  flex: none;
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--hue-dark);
+  font-weight: 700;
 }
 
 .team-items-heading {
@@ -1406,6 +1446,88 @@ button, input {
   border-color: #7a3bb0;
 }
 
+/* --- Recorrido guiado del primer combate (CombatFirstRunTutorial.jsx) --- */
+.combat-tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(23, 16, 24, 0.62);
+}
+
+.combat-tutorial-ring {
+  position: fixed;
+  z-index: 81;
+  border: 3px solid #f2b134;
+  box-shadow: 0 0 0 4px rgba(242, 177, 52, 0.3);
+  pointer-events: none;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+.combat-tutorial-caption {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  z-index: 82;
+  background: var(--paper);
+  border: var(--bevel) solid var(--line);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.combat-tutorial-caption p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-body);
+}
+
+.combat-tutorial-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.combat-tutorial-skip {
+  background: none;
+  border: none;
+  color: var(--hue-mid);
+  font-family: var(--font-pixel);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.combat-tutorial-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.combat-tutorial-dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--hue-dark);
+  background: transparent;
+}
+
+.combat-tutorial-dot--active {
+  background: var(--hue-mid);
+}
+
+.combat-tutorial-next {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.68rem;
+  padding: 8px 14px;
+  background: var(--hue-mid);
+  color: var(--paper);
+  border: 2px solid var(--line);
+  cursor: pointer;
+}
+
 .combat-item-tag {
   font-size: 0.5rem;
   font-weight: 600;
@@ -1726,6 +1848,44 @@ button, input {
   filter: none;
 }
 
+/* Señala un tab puntual (ver App.jsx highlightNavKey) — flecha que rebota arriba + brillo dorado
+ * en el icono, para que no haga falta explicar con texto "ahora andá a Combate". */
+.bottom-nav-tab--highlight {
+  position: relative;
+}
+
+.bottom-nav-tab--highlight .bottom-nav-icon {
+  filter: none;
+  animation: bottom-nav-highlight-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes bottom-nav-highlight-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
+
+.bottom-nav-highlight-arrow {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: #f2b134;
+  animation: bottom-nav-arrow-bounce 1.3s ease-in-out infinite;
+}
+
+@keyframes bottom-nav-arrow-bounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav-tab--highlight .bottom-nav-icon,
+  .bottom-nav-highlight-arrow {
+    animation: none;
+  }
+}
+
 .sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -1986,6 +2146,76 @@ button, input {
   max-width: 260px;
   font-size: 1rem;
   padding: 14px 8px;
+  margin-top: 4px;
+}
+
+/* --- Invitacion a seguir escaneando (PartyInviteScreen.jsx) — overlay de una sola vez, montado
+ * a nivel App (como ScanReveal) por encima de TODO, no una "screen" mas del ruteo. Mismo fondo
+ * que el titulo (title-bg.jpg) a proposito: se siente como volver a esa promesa inicial. --- */
+.party-invite {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  animation: scan-reveal-fade-in 0.25s ease both;
+}
+
+.party-invite-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: url("/title-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-color: var(--ink);
+}
+
+.party-invite-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(23, 16, 24, 0.3) 0%, rgba(23, 16, 24, 0.55) 45%, rgba(23, 16, 24, 0.95) 100%);
+}
+
+.party-invite-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 0 26px 40px;
+}
+
+.party-invite-heading {
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.25;
+  color: var(--paper);
+  text-align: center;
+  text-shadow: 2px 2px 0 var(--line);
+}
+
+.party-invite-body {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--paper);
+  opacity: 0.92;
+  text-align: center;
+  text-shadow: 1px 1px 0 var(--line);
+}
+
+.party-invite-cta {
+  width: 100%;
+  max-width: 280px;
+  font-size: 1.05rem;
+  padding: 15px 8px;
   margin-top: 4px;
 }
 

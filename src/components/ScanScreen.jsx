@@ -1,11 +1,18 @@
 import { useState } from "react";
 import BarcodeScanner from "./BarcodeScanner.jsx";
+import { getScannedCharacterCodes } from "../storage.js";
+
+const TEAM_SIZE = 3;
 
 /** Pantalla de escaneo: la cámara es la única forma de sumar códigos (ver BarcodeScanner.jsx).
  * Esta vista de "reposo" es solo la invitación a escanear — Codex y Equipo ya están a un tab de
- * distancia en BottomNav, no hace falta duplicarlos acá. */
+ * distancia en BottomNav, no hace falta duplicarlos acá. Mientras el jugador todavia no junto los
+ * 3 personajes que hacen falta para un equipo, el encabezado se vuelve una guia de progreso en
+ * vez del texto genérico — ver tambien BottomNav (el tab Combate se resalta al llegar a 3). */
 export default function ScanScreen({ onScan }) {
   const [showCamera, setShowCamera] = useState(false);
+  const scannedCount = Math.min(TEAM_SIZE, getScannedCharacterCodes().length);
+  const onboarding = scannedCount < TEAM_SIZE;
 
   const handleDetected = (digits12) => {
     setShowCamera(false);
@@ -27,8 +34,22 @@ export default function ScanScreen({ onScan }) {
           <div className="scan-hint-barcode-beam" />
         </div>
 
-        <h2 className="scan-screen-heading">Escaneá un producto real</h2>
-        <p className="scan-screen-tagline">Cualquier código de barras sirve — de tu casa, un kiosco, lo que sea</p>
+        <h2 className="scan-screen-heading">
+          {onboarding ? "Armá tu primer equipo" : "Escaneá un producto real"}
+        </h2>
+        <p className="scan-screen-tagline">
+          {onboarding
+            ? `Escaneá ${TEAM_SIZE} productos distintos para desbloquear el combate`
+            : "Cualquier código de barras sirve — de tu casa, un kiosco, lo que sea"}
+        </p>
+
+        {onboarding && (
+          <div className="scan-onboard-dots">
+            {Array.from({ length: TEAM_SIZE }, (_, i) => (
+              <span key={i} className={`scan-onboard-dot${i < scannedCount ? " scan-onboard-dot--done" : ""}`} />
+            ))}
+          </div>
+        )}
 
         <div className="scan-steps">
           <div className="scan-step">

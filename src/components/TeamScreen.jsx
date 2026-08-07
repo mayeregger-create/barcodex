@@ -121,18 +121,26 @@ export default function TeamScreen({ onScanAnother, onCodex, onCombat }) {
     setPicker(null);
   };
 
+  const teamGuideHint = !analysis
+    ? characters.length < 3
+      ? `Escaneá al menos 3 personajes para armar un equipo (llevás ${characters.length}).`
+      : "Elegí 3 personajes para tu equipo — tocá un espacio vacío para empezar."
+    : null;
+
   return (
     <div className="team-screen">
       <h2>Equipo</h2>
+      {teamGuideHint && <p className="team-guide-hint">{teamGuideHint}</p>}
 
       <div className="team-slots">
         {[0, 1, 2].map((i) => {
           const c = team[i];
+          const invitePulse = !c && characters.length >= 3;
           return (
             <button
               key={i}
               type="button"
-              className={`team-slot${c ? "" : " team-slot--empty"}`}
+              className={`team-slot${c ? "" : " team-slot--empty"}${invitePulse ? " team-slot--empty-pulse" : ""}`}
               onClick={() => handleSlotTap("character", i)}
             >
               {c ? (
@@ -209,13 +217,7 @@ export default function TeamScreen({ onScanAnother, onCodex, onCombat }) {
               </>
             )}
           </>
-        ) : characters.length < 3 ? (
-          <p className="team-hint">
-            Necesitás escanear al menos 3 personajes para armar un equipo (llevás {characters.length}).
-          </p>
-        ) : (
-          <p className="team-hint">Tocá un slot vacío para elegir personaje — el primero es el principal.</p>
-        )}
+        ) : null}
       </div>
 
       {analysis && (

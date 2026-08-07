@@ -7,6 +7,8 @@ import { applyItemToStats, itemLabel } from "../core/items.js";
 import PixelSprite from "./PixelSprite.jsx";
 import CombatFx from "./CombatFx.jsx";
 import BattleSummary from "./BattleSummary.jsx";
+import CombatFirstRunTutorial from "./CombatFirstRunTutorial.jsx";
+import { hasSeenCombatTutorial, markSeenCombatTutorial } from "../onboarding.js";
 
 /** Rival de CPU: en el juego final seria otro jugador — para pruebas, un escuadron al azar. */
 function randomRivalTeam() {
@@ -242,9 +244,12 @@ const SPEED_DELAY = { 1: 1100, 2: 550 };
 export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
   const [battle, setBattle] = useState(() => initialBattle(playerTeam, playerItems, randomRivalTeam()));
   const [speed, setSpeed] = useState(1);
+  // Primer combate de la partida: pausa el autobattle mientras se explica que es cada cosa en
+  // pantalla — ver CombatFirstRunTutorial.jsx. Despues de la primera vez nunca mas aparece.
+  const [showTutorial, setShowTutorial] = useState(() => !hasSeenCombatTutorial());
 
   useEffect(() => {
-    if (battle.phase !== "battle") return;
+    if (battle.phase !== "battle" || showTutorial) return;
     const timeout = setTimeout(() => {
       // Revalida contra el estado actual (no la clausura de este efecto): evita que un turno se
       // resuelva dos veces o fuera de orden si dos actualizaciones se pisan entre si.
@@ -253,9 +258,14 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
     return () => clearTimeout(timeout);
     // battle.player/battle.rival (no solo *Active): si alguien muere y el reemplazo hereda el
     // mismo "turn", el efecto no se re-dispararia sin esto y el autobattle quedaria trabado.
-  }, [battle.turn, battle.phase, battle.player, battle.rival, speed]);
+  }, [battle.turn, battle.phase, battle.player, battle.rival, speed, showTutorial]);
 
   const restart = () => setBattle(initialBattle(playerTeam, playerItems, randomRivalTeam()));
+
+  const finishTutorial = () => {
+    markSeenCombatTutorial();
+    setShowTutorial(false);
+  };
 
   if (battle.phase === "over") {
     return <BattleSummary battle={battle} onRestart={restart} onTeam={onTeam} />;
@@ -263,6 +273,8 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
 
   return (
     <div className="combat-screen">
+      {showTutorial && <CombatFirstRunTutorial onDone={finishTutorial} />}
+
       <CombatFx events={battle.events} eventSeq={battle.eventSeq}>
         {(fxFor) => (
           <>
