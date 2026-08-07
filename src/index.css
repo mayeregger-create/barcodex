@@ -1277,23 +1277,6 @@ button, input {
   padding-bottom: 2px;
 }
 
-/* Barra de Energia (ver core/abilities.js#ENERGY_MAX) — mas fina que la de HP, no compite con
- * ella por atencion, pero deja ver de un vistazo cuan cerca esta alguien de su habilidad/Golpe
- * definitivo. */
-.combat-energy-bar {
-  height: 4px;
-  background: #fff;
-  border: 1px solid var(--hue-dark);
-  margin: 2px 6px 4px;
-  overflow: hidden;
-}
-
-.combat-energy-fill {
-  height: 100%;
-  background: #4472ca;
-  transition: width 0.3s ease;
-}
-
 .combat-status-tag {
   font-size: 0.52rem;
   font-weight: 700;
@@ -1312,6 +1295,11 @@ button, input {
 .combat-status-tag--bad {
   color: #a32d2d;
   border-color: #a32d2d;
+}
+
+.combat-status-tag--ability {
+  color: #7a3bb0;
+  border-color: #7a3bb0;
 }
 
 .combat-item-tag {

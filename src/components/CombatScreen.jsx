@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { generateCharacter, randomCode } from "../core/character.js";
 import { analyzeSquad, applyRarezaToBuffs, relation } from "../core/squad.js";
 import { computeAttack, resolveParry, resolveTurnOrder, applyIncoming } from "../core/combat.js";
-import { decideAction, applyAbility, tickTurnStart, ENERGY_MAX } from "../core/abilities.js";
+import { decideAction, applyAbility, tickTurnStart, registerHitTaken, registerHitDealt, grantAbilityCharge } from "../core/abilities.js";
 import { applyItemToStats, itemLabel } from "../core/items.js";
 import PixelSprite from "./PixelSprite.jsx";
 import CombatFx from "./CombatFx.jsx";
@@ -36,10 +36,11 @@ function makeSide(team, items = []) {
       alive: true,
       parryArmed: false,
       buff: buffs[i],
-      energy: 0,
       status: {}, // dodgeNext / halfDmgNext / paralized / regenTurnsLeft / regenAmount / fuerzaBuff
-      abilityCooldown: 0,
-      abilityUsedOnce: false,
+      hitsTaken: 0,
+      hitsDealt: 0,
+      parryCharges: 0,
+      abilityCharges: 0,
     };
   });
 }
@@ -88,9 +89,9 @@ function performAction(state, side, action) {
       else events.push({ side: defenderSide, idx: defenderIdx, ...ev });
     }
   } else if (action === "parry") {
-    newAttacker = { ...attacker, parryArmed: true };
+    newAttacker = { ...attacker, parryArmed: true, parryCharges: attacker.parryCharges - 1 };
     newDefender = { ...defender };
-    log.push(`${attacker.character.nombre} se prepara para bloquear.`);
+    log.push(`${attacker.character.nombre} gasta su carga de Parry y se prepara para bloquear.`);
     events.push({ side, idx: attackerIdx, kind: "actor", action: "parry" });
   } else {
     newAttacker = { ...attacker, parryArmed: false };
@@ -98,8 +99,7 @@ function performAction(state, side, action) {
     events.push({ side, idx: attackerIdx, kind: "actor", action: "attack" });
     if (defender.parryArmed) {
       const rel = relation(attacker.character.continente, defender.character.continente);
-      const { dmg: rawDmg } = computeAttack(attacker, defender);
-      const result = resolveParry({ ...defender.character, stats: defender.stats }, rel, rawDmg);
+      const result = resolveParry(defender, attacker, rel);
       newDefender.parryArmed = false;
       if (result.blocked) {
         events.push({ side: defenderSide, idx: defenderIdx, kind: "block" });
@@ -107,18 +107,21 @@ function performAction(state, side, action) {
           const applied = applyIncoming(newAttacker.status, result.reflectDmg);
           newAttacker.status = applied.status;
           newAttacker.hp = Math.max(0, attacker.hp - applied.dmg);
-          log.push(`${defender.character.nombre} bloquea y refleja ${applied.dmg} de daño a ${attacker.character.nombre}.`);
+          newAttacker = registerHitTaken(newAttacker);
+          newDefender = registerHitDealt(newDefender);
+          log.push(`${defender.character.nombre} bloquea y refleja ${applied.dmg} de daño a ${attacker.character.nombre} (ignora su Defensa).`);
           events.push({ side, idx: attackerIdx, kind: "damage", amount: applied.dmg, source: "reflect" });
-        } else if (result.energyGain > 0) {
-          newDefender.energy = Math.min(ENERGY_MAX, defender.energy + result.energyGain);
-          log.push(`${defender.character.nombre} bloquea (afín) y gana Energía.`);
         } else {
-          log.push(`${defender.character.nombre} bloquea el golpe de ${attacker.character.nombre}.`);
+          newDefender = grantAbilityCharge(newDefender, 1);
+          log.push(`${defender.character.nombre} bloquea (afín) el golpe de ${attacker.character.nombre} y suma una carga de Habilidad.`);
         }
       } else {
+        const { dmg: rawDmg } = computeAttack(attacker, defender);
         const applied = applyIncoming(newDefender.status, rawDmg);
         newDefender.status = applied.status;
         newDefender.hp = Math.max(0, defender.hp - applied.dmg);
+        newDefender = registerHitTaken(newDefender);
+        newAttacker = registerHitDealt(newAttacker);
         log.push(`${attacker.character.nombre} ataca — ${defender.character.nombre} falla el bloqueo y recibe ${applied.dmg}.`);
         events.push({ side: defenderSide, idx: defenderIdx, kind: "damage", amount: applied.dmg, source: "attack" });
       }
@@ -131,6 +134,8 @@ function performAction(state, side, action) {
         log.push(`${attacker.character.nombre} ataca — ¡${defender.character.nombre} esquiva el golpe!`);
         events.push({ side: defenderSide, idx: defenderIdx, kind: "dodge" });
       } else {
+        newDefender = registerHitTaken(newDefender);
+        newAttacker = registerHitDealt(newAttacker);
         log.push(
           `${attacker.character.nombre} ataca a ${defender.character.nombre} por ${applied.dmg}` +
           `${isCrit ? " (¡Crítico!)" : ""}${applied.halved ? " (mitigado a la mitad)" : ""}.`
@@ -179,15 +184,14 @@ function performAction(state, side, action) {
   return { player: newPlayer, rival: newRival, playerActive, rivalActive, turn, log, phase, winner, events };
 }
 
-/** Un paso completo del autobattle: tickea el estado de quien actua (paralisis/regen/energia
- * pasiva/cooldown — ver abilities.js#tickTurnStart), y si no perdio el turno por parálisis,
- * decide y ejecuta su accion. Un solo punto de entrada para el loop en el useEffect de abajo. */
+/** Un paso completo del autobattle: tickea el estado de quien actua (paralisis/regen — ver
+ * abilities.js#tickTurnStart), y si no perdio el turno por parálisis, decide y ejecuta su accion
+ * segun sus cargas de Parry/Habilidad (ver abilities.js#decideAction). Un solo punto de entrada
+ * para el loop en el useEffect de abajo. */
 function advanceTurn(state) {
   const side = state.turn;
   const attackerArr = side === "player" ? state.player : state.rival;
   const attackerIdx = side === "player" ? state.playerActive : state.rivalActive;
-  const defenderArr = side === "player" ? state.rival : state.player;
-  const defenderIdx = side === "player" ? state.rivalActive : state.playerActive;
 
   const { battler: tickedAttacker, skip, log: tickLog, events: tickEvents } = tickTurnStart(attackerArr[attackerIdx]);
   const taggedTickEvents = tickEvents.map((ev) => ({ side, idx: attackerIdx, ...ev }));
@@ -207,8 +211,7 @@ function advanceTurn(state) {
     };
   }
 
-  const opponent = defenderArr[defenderIdx];
-  const action = decideAction(tickedAttacker, opponent);
+  const action = decideAction(tickedAttacker);
   const result = performAction(stateAfterTick, side, action);
   return { ...result, events: [...taggedTickEvents, ...result.events], eventSeq: state.eventSeq + 1 };
 }
@@ -292,9 +295,10 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
 }
 
 function CombatSlot({ battler, active, fx }) {
-  const { character, item, hp, alive, parryArmed, energy, status } = battler;
+  const { character, item, hp, alive, parryArmed, parryCharges, abilityCharges, status } = battler;
   const hpPct = Math.max(0, Math.round((hp / character.hpMax) * 100));
-  const energyPct = Math.max(0, Math.round((energy / ENERGY_MAX) * 100));
+  const abilityCost = character.habilidad.name === "Golpe definitivo" ? 3 : 1;
+  const abilityReady = abilityCharges >= abilityCost;
   return (
     <div
       className={[
@@ -316,11 +320,10 @@ function CombatSlot({ battler, active, fx }) {
           <div className="combat-hp-fill" style={{ width: `${hpPct}%` }} />
         </div>
         <div className="combat-hp-text">{Math.max(0, Math.round(hp))} / {character.hpMax}</div>
-        <div className="combat-energy-bar" title="Energía">
-          <div className="combat-energy-fill" style={{ width: `${energyPct}%` }} />
-        </div>
         {item && <div className="combat-item-tag">{itemLabel(item)}</div>}
         {alive && parryArmed && <div className="combat-status-tag combat-status-tag--parry">Parry listo</div>}
+        {alive && !parryArmed && parryCharges > 0 && <div className="combat-status-tag combat-status-tag--parry">¡Parry cargado!</div>}
+        {alive && abilityReady && <div className="combat-status-tag combat-status-tag--ability">¡Habilidad lista!</div>}
         {alive && status.dodgeNext && <div className="combat-status-tag">Esquivará</div>}
         {alive && status.halfDmgNext && <div className="combat-status-tag">Piel dura</div>}
         {alive && status.regenTurnsLeft > 0 && <div className="combat-status-tag">Regenerando</div>}

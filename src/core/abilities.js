@@ -1,92 +1,72 @@
 // src/core/abilities.js
-// Efecto mecanico + condicion de disparo automatico para las 10 habilidades especiales de
-// data/abilities.js#ABILITIES. Cada personaje tiene UNA sola (indexada por el digito
-// verificador, ver character.js), asi que la decision por turno es siempre binaria: "conviene
-// activar la habilidad de este battler ahora mismo?" — no hay que priorizar entre varias.
-//
-// Funciones puras: reciben battlers (forma en CombatScreen.jsx#makeSide, con .status/.energy/
-// .abilityCooldown/.abilityUsedOnce agregados) y devuelven copias nuevas + lineas de log.
-import { baseDamage, computeAttack, effectiveDefensa, applyIncoming } from "./combat.js";
-import { wheelModifier } from "./squad.js";
+// Efecto mecanico de las 10 habilidades especiales de data/abilities.js#ABILITIES, mas el
+// sistema de CARGAS que decide cuando se usan (tanto habilidades como Parry): cada golpe que un
+// battler DA lo acerca a una carga de Habilidad, cada golpe que RECIBE lo acerca a una carga de
+// Parry. Reemplaza el enfoque anterior (heuristicas por HP/Energia, cooldowns por turno) —
+// buscado a proposito: la decision es "¿tengo la carga?", no una apuesta situacional.
+import { computeAttack, applyIncoming } from "./combat.js";
 
-export const ENERGY_MAX = 10;
+// Golpes para juntar 1 carga. Con 3, en un combate de ~8 acciones por lado (ver hpMax en
+// character.js) cada bando ve un par de habilidades y un par de parries por combate — suficiente
+// para sentirse presente sin ser lo unico que pasa.
+const HITS_PER_PARRY_CHARGE = 3;
+const HITS_PER_ABILITY_CHARGE = 3;
+const MAX_PARRY_CHARGES = 1;
+const MAX_ABILITY_CHARGES = 3; // = el costo de Golpe definitivo, el mas caro
 
-const ONCE = "once";
-
-// Turnos de enfriamiento tras usarse (propios de ese battler, no del reloj global) — "once" =
-// solo una vez por combate. Golpe definitivo no tiene enfriamiento: lo bloquea necesitar la
-// Energia llena, que ya tarda varios turnos en cargarse.
-const COOLDOWN = {
-  "Golpe veloz": 2,
-  "Golpe certero": 2,
-  "Piel de corteza": 3,
-  "Drenaje": 2,
-  "Grito de guerra": ONCE,
-  "Paso fantasma": 3,
-  "Fortuna del mercader": 3,
-  "Regeneración": 4,
-  "Grito paralizante": 4,
-  "Golpe definitivo": 0,
-};
-
-function effectiveFuerza(battler) {
-  return battler.stats.Fuerza + (battler.status.fuerzaBuff || 0);
+// Golpe definitivo pide 3 cargas en vez de 1: sigue siendo el "ultimate" raro, pero con la misma
+// moneda que el resto en vez de un medidor de Energia aparte.
+function abilityCost(name) {
+  return name === "Golpe definitivo" ? 3 : 1;
 }
 
-/** Estimacion determinista (sin critico ni RNG) de cuanto haria un ataque normal — solo para
- * decidir triggers, nunca para aplicar daño real (eso siempre pasa por computeAttack). */
-function estimateDamage(attacker, defender) {
-  const dmgMod = wheelModifier(attacker.character.continente, defender.character.continente).dmgMod;
-  return baseDamage(effectiveFuerza(attacker), effectiveDefensa(defender)) * dmgMod;
-}
-
+/** true si `battler` ya junto suficientes cargas para su propia habilidad. */
 export function canUseAbility(battler) {
-  const name = battler.character.habilidad.name;
-  if (name === "Golpe definitivo") return battler.energy >= ENERGY_MAX;
-  const cd = COOLDOWN[name];
-  if (cd === ONCE) return !battler.abilityUsedOnce;
-  return battler.abilityCooldown <= 0;
+  return battler.abilityCharges >= abilityCost(battler.character.habilidad.name);
 }
 
-/** true si conviene activar la habilidad de `battler` este turno, dado el estado de `opponent`. */
-function abilityWants(battler, opponent) {
-  if (!canUseAbility(battler)) return false;
-  const hpPct = battler.hp / battler.character.hpMax;
-  switch (battler.character.habilidad.name) {
-    case "Golpe veloz":
-    case "Golpe certero":
-    case "Grito de guerra":
-    case "Golpe definitivo":
-      return true; // el gate de cooldown/energia/"once" ya filtra cuando no corresponde
-    case "Drenaje":
-      return battler.energy < ENERGY_MAX;
-    case "Piel de corteza":
-      return hpPct < 0.35;
-    case "Paso fantasma":
-      return hpPct < 0.3;
-    case "Fortuna del mercader":
-      return hpPct < opponent.hp / opponent.character.hpMax - 0.15;
-    case "Regeneración":
-      return hpPct >= 0.2 && hpPct <= 0.6;
-    case "Grito paralizante":
-      return estimateDamage(opponent, battler) >= battler.hp * 0.25;
-    default:
-      return false;
-  }
+/** true si conviene armar Parry este turno: unicamente si hay una carga lista y no esta ya
+ * armado (armar es la accion del turno — igual que antes, solo que ahora es "gastar la carga",
+ * no una apuesta sobre el daño estimado del rival). */
+export function shouldParry(battler) {
+  return battler.parryCharges > 0 && !battler.parryArmed;
 }
 
-/** true si conviene armar Parry este turno: se juega antes de ver la accion del rival, asi que
- * es una apuesta sobre cuanto daño estimado recibiria si el rival ataca. */
-export function shouldParry(battler, opponent) {
-  if (battler.parryArmed) return false;
-  return estimateDamage(opponent, battler) >= battler.hp * 0.3;
-}
-
-/** Decide la accion de `battler` este turno: "ability" | "parry" | "attack". */
-export function decideAction(battler, opponent) {
-  if (abilityWants(battler, opponent)) return "ability";
-  if (shouldParry(battler, opponent)) return "parry";
+/** Decide la accion de `battler` este turno: "ability" | "parry" | "attack". Ya no mira al
+ * rival — con cargas fijas, la decision es interna, no situacional. */
+export function decideAction(battler) {
+  if (canUseAbility(battler)) return "ability";
+  if (shouldParry(battler)) return "parry";
   return "attack";
+}
+
+/** Registra un golpe RECIBIDO por `battler`: cada 3, una carga de Parry (tope 1). */
+export function registerHitTaken(battler) {
+  let hitsTaken = (battler.hitsTaken || 0) + 1;
+  let parryCharges = battler.parryCharges || 0;
+  if (hitsTaken >= HITS_PER_PARRY_CHARGE) {
+    hitsTaken -= HITS_PER_PARRY_CHARGE;
+    parryCharges = Math.min(MAX_PARRY_CHARGES, parryCharges + 1);
+  }
+  return { ...battler, hitsTaken, parryCharges };
+}
+
+/** Registra un golpe DADO por `battler`: cada 3, una carga de Habilidad (tope 3). `bonus` suma
+ * cargas extra de una sola vez (ej. el "afin" de Parry, o Drenaje). */
+export function registerHitDealt(battler, bonus = 0) {
+  let hitsDealt = (battler.hitsDealt || 0) + 1;
+  let abilityCharges = battler.abilityCharges || 0;
+  while (hitsDealt >= HITS_PER_ABILITY_CHARGE) {
+    hitsDealt -= HITS_PER_ABILITY_CHARGE;
+    abilityCharges = Math.min(MAX_ABILITY_CHARGES, abilityCharges + 1);
+  }
+  if (bonus > 0) abilityCharges = Math.min(MAX_ABILITY_CHARGES, abilityCharges + bonus);
+  return { ...battler, hitsDealt, abilityCharges };
+}
+
+/** Suma cargas de Habilidad sin que haya golpe de por medio (bonus puro, ej. bloqueo afin). */
+export function grantAbilityCharge(battler, amount = 1) {
+  return { ...battler, abilityCharges: Math.min(MAX_ABILITY_CHARGES, (battler.abilityCharges || 0) + amount) };
 }
 
 /** Un golpe dentro de una habilidad: igual que un ataque normal (rueda + critico + Resistencia)
@@ -98,24 +78,16 @@ function resolveHit(attacker, defenderStatus, defenderForCalc, mult) {
   return { dmg, isCrit, dodged, halved, status };
 }
 
-function setCooldown(battler, name) {
-  const cd = COOLDOWN[name];
-  if (cd === ONCE) return { ...battler, abilityUsedOnce: true };
-  if (typeof cd === "number" && cd > 0) return { ...battler, abilityCooldown: cd };
-  return battler;
-}
-
 /**
- * Ejecuta la habilidad de `attacker` contra `defender`. Devuelve los battlers actualizados
- * (nunca muta los originales) + las lineas de log a agregar.
+ * Ejecuta la habilidad de `attacker` contra `defender` (ya se confirmo que hay carga suficiente
+ * — ver canUseAbility). Devuelve los battlers actualizados (nunca muta los originales), las
+ * lineas de log, y `events` para la ayuda visual (ver CombatFx.jsx).
  */
 export function applyAbility(attacker, defender) {
   const name = attacker.character.habilidad.name;
   let newAttacker = { ...attacker, status: { ...attacker.status } };
   let newDefender = { ...defender, status: { ...defender.status } };
   const log = [];
-  // "role" en vez de side/idx: applyAbility no sabe en que posicion del equipo esta cada uno,
-  // eso lo agrega quien la llama (CombatScreen.jsx#performAction), que si lo sabe.
   const events = [{ role: "actor", kind: "actor", action: "ability" }];
 
   const dealDamage = (mult) => {
@@ -126,6 +98,8 @@ export function applyAbility(attacker, defender) {
       events.push({ role: "target", kind: "dodge" });
     } else {
       events.push({ role: "target", kind: "damage", amount: dmg, source: "ability" });
+      newDefender = registerHitTaken(newDefender);
+      newAttacker = registerHitDealt(newAttacker);
     }
     return { dmg, isCrit, dodged, halved };
   };
@@ -153,10 +127,11 @@ export function applyAbility(attacker, defender) {
       break;
     }
     case "Drenaje": {
-      const { dmg, isCrit, dodged } = dealDamage(1);
-      const gain = dodged ? 0 : Math.max(1, Math.round(dmg * 0.35));
-      newAttacker.energy = Math.min(ENERGY_MAX, newAttacker.energy + gain);
-      log.push(`${attacker.character.nombre} usa Drenaje: ${dmg} de daño${isCrit ? " (¡crítico!)" : ""}, +${gain} Energía.`);
+      // Sin medidor de Energia ya no "carga" nada aparte — en cambio pega un poco mas fuerte y
+      // regala una carga de Habilidad extra, para conservar el gancho "vampirico" original.
+      const { dmg, isCrit } = dealDamage(1.15);
+      newAttacker = grantAbilityCharge(newAttacker, 1);
+      log.push(`${attacker.character.nombre} usa Drenaje: ${dmg} de daño${isCrit ? " (¡crítico!)" : ""}, +1 carga de Habilidad.`);
       break;
     }
     case "Grito de guerra": {
@@ -192,7 +167,6 @@ export function applyAbility(attacker, defender) {
     }
     case "Golpe definitivo": {
       const { dmg, isCrit } = dealDamage(2.2);
-      newAttacker.energy = 0;
       log.push(`${attacker.character.nombre} descarga su Golpe definitivo por ${dmg}${isCrit ? " (¡crítico!)" : ""}.`);
       break;
     }
@@ -200,14 +174,13 @@ export function applyAbility(attacker, defender) {
       break;
   }
 
-  newAttacker = setCooldown(newAttacker, name);
+  newAttacker.abilityCharges -= abilityCost(name);
   return { attacker: newAttacker, defender: newDefender, log, events };
 }
 
 /**
  * Se llama al empezar el turno de `battler`, antes de decidir accion: consume la paralisis (si
- * esta activa, pierde el turno entero), aplica Regeneracion y la Energia pasiva del buff de
- * escuadron (ver squad.js#analyzeSquad — "afin" da +1 Energia/turno), y baja el cooldown propio.
+ * esta activa, pierde el turno entero) y aplica Regeneracion.
  */
 export function tickTurnStart(battler) {
   let next = { ...battler, status: { ...battler.status } };
@@ -228,12 +201,6 @@ export function tickTurnStart(battler) {
     log.push(`${next.character.nombre} se regenera ${heal} HP.`);
     events.push({ role: "self", kind: "heal", amount: heal });
   }
-
-  if (next.buff.energia > 0) {
-    next.energy = Math.min(ENERGY_MAX, next.energy + next.buff.energia);
-  }
-
-  if (next.abilityCooldown > 0) next.abilityCooldown -= 1;
 
   return { battler: next, skip: false, log, events };
 }

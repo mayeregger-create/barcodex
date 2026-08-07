@@ -21,25 +21,29 @@ export function hpMax(fuerza, defensa) {
 }
 
 /**
- * Resuelve un intento de Parry.
- * @param {object} actor - personaje que bloquea (con .parry, .stats.Suerte)
- * @param {"afin"|"rival"|"mismo"} rel - relacion elemental contra el atacante actual
- * @param {number} incomingDmg - daño que se hubiera recibido
- * @returns {{blocked: boolean, energyGain: number, reflectDmg: number}}
+ * Resuelve un Parry cargado (ver abilities.js#registerHitTaken — se arma solo con 1 carga
+ * disponible, ya no es una apuesta situacional). Por eso el bloqueo es alta probabilidad pero no
+ * total (80-91% segun clase, sube contra un rival elemental): la carga ya fue el costo, no hace
+ * falta ademas que sea una moneda al aire pareja. Si bloquea y la relacion NO es afin, devuelve
+ * un contragolpe que ignora la Defensa del atacante ("pasa a traves de las defensas") — un
+ * castigo real, no un roce.
  */
-export function resolveParry(actor, rel, incomingDmg) {
-  const { block, reflect } = actor.parry;
-  let blockChance = block === null ? Math.max(0.2, Math.min(0.8, actor.stats.Suerte / 100)) : block;
-  if (rel === "rival") blockChance = Math.min(0.95, blockChance + 0.10);
+export function resolveParry(blocker, attacker, rel) {
+  const { block, reflect } = blocker.character.parry;
+  const base = block === null ? Math.max(0.2, Math.min(0.8, blocker.stats.Suerte / 100)) : block;
+  let blockChance = 0.8 + base * 0.15;
+  if (rel === "rival") blockChance = Math.min(0.97, blockChance + 0.07);
 
   if (Math.random() >= blockChance) {
-    return { blocked: false, energyGain: 0, reflectDmg: 0 };
+    return { blocked: false, reflectDmg: 0 };
   }
   if (rel === "afin") {
-    return { blocked: true, energyGain: 1, reflectDmg: 0 };
+    return { blocked: true, reflectDmg: 0 };
   }
   const reflectPct = reflect === null ? 0.2 + Math.random() * 0.6 : reflect;
-  return { blocked: true, energyGain: 0, reflectDmg: Math.round(incomingDmg * reflectPct) };
+  const dmgMod = wheelModifier(blocker.character.continente, attacker.character.continente).dmgMod;
+  const raw = baseDamage(effectiveFuerza(blocker), 0) * dmgMod; // Defensa 0: bypass a proposito
+  return { blocked: true, reflectDmg: Math.max(1, Math.round(raw * reflectPct)) };
 }
 
 /** Probabilidad de critico. Bardo la duplica (pasivo de clase). */
@@ -80,6 +84,11 @@ export function resolveTurnOrder(charA, charB) {
  * CombatScreen.jsx#makeSide. Antes vivian duplicadas dentro de CombatScreen; ahora las usa
  * tambien abilities.js, asi que quedan aca como fuente unica. --- */
 
+/** Fuerza efectiva incluyendo el buff permanente de Grito de guerra (ver abilities.js). */
+export function effectiveFuerza(battler) {
+  return battler.stats.Fuerza + (battler.status?.fuerzaBuff || 0);
+}
+
 export function effectiveDefensa(battler) {
   return battler.stats.Defensa * (1 + (battler.buff.defensa || 0) / 100);
 }
@@ -97,7 +106,7 @@ export function effectiveCritChance(battler) {
 export function computeAttack(attacker, defender, mult = 1) {
   const dmgMod = wheelModifier(attacker.character.continente, defender.character.continente).dmgMod;
   const isCrit = Math.random() < effectiveCritChance(attacker);
-  let dmg = baseDamage(attacker.stats.Fuerza, effectiveDefensa(defender)) * dmgMod * mult;
+  let dmg = baseDamage(effectiveFuerza(attacker), effectiveDefensa(defender)) * dmgMod * mult;
   if (isCrit) dmg *= 1.5;
   const resist = defender.buff.resistencia || 0;
   dmg = Math.max(1, Math.round(dmg * (1 - resist / 100)));
