@@ -396,6 +396,10 @@ button, input {
  * con nombres/epitetos largos. Se pixela al agrandarse a proposito. --- */
 .result-hero {
   position: relative;
+  /* z-index explicito (no solo position:relative) para que este cree su PROPIO contexto de
+   * apilado — si no, el z-index:-1 del fondo (mas abajo) se escapa detras de TODA la app en vez
+   * de quedar solo detras del retrato/texto de este banner. */
+  z-index: 0;
   flex: none;
   display: flex;
   align-items: center;
