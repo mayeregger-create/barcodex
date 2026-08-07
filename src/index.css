@@ -204,17 +204,116 @@ button, input {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
-  padding: 0 24px 40px;
+  padding: 0 24px 32px;
+}
+
+/* Vista previa decorativa del escaneo (no es un codigo real, es solo para anticipar el gesto —
+ * mismo lenguaje visual del haz que despues se ve de verdad en ScanReveal.jsx). */
+.scan-hint-barcode {
+  position: relative;
+  width: 120px;
+  height: 44px;
+  background: var(--paper);
+  border: 2px solid var(--line);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.scan-hint-barcode-bars {
+  position: absolute;
+  inset: 5px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--line) 0 2px,
+    transparent 2px 5px,
+    var(--line) 5px 6px,
+    transparent 6px 11px,
+    var(--line) 11px 14px,
+    transparent 14px 17px,
+    var(--line) 17px 18px,
+    transparent 18px 23px
+  );
+  background-repeat: repeat-x;
+}
+
+.scan-hint-barcode-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #f2b134, transparent);
+  mix-blend-mode: multiply;
+  animation: scan-hint-beam 1.8s ease-in-out infinite;
+}
+
+@keyframes scan-hint-beam {
+  0% { top: 10%; opacity: 0.3; }
+  50% { top: 82%; opacity: 0.9; }
+  100% { top: 10%; opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-hint-barcode-beam {
+    animation: none;
+    top: 50%;
+  }
+}
+
+.scan-screen-heading {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--paper);
+  text-shadow: 2px 2px 0 var(--line);
+  text-align: center;
 }
 
 .scan-screen-tagline {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
+  color: var(--paper);
+  opacity: 0.9;
+  text-shadow: 1px 1px 0 var(--line);
+  text-align: center;
+}
+
+.scan-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.scan-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-step-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.scan-step-label {
+  font-size: 0.55rem;
   color: var(--paper);
   text-shadow: 1px 1px 0 var(--line);
   text-align: center;
+  line-height: 1.15;
+}
+
+.scan-step-arrow {
+  flex: none;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--paper);
+  opacity: 0.5;
 }
 
 .scan-cta {

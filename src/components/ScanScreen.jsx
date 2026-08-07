@@ -22,9 +22,33 @@ export default function ScanScreen({ onScan }) {
       <div className="scan-screen-overlay" />
 
       <div className="scan-screen-content">
-        <p className="scan-screen-tagline">Apuntá la cámara a un código de barras</p>
+        <div className="scan-hint-barcode">
+          <div className="scan-hint-barcode-bars" />
+          <div className="scan-hint-barcode-beam" />
+        </div>
+
+        <h2 className="scan-screen-heading">Escaneá un producto real</h2>
+        <p className="scan-screen-tagline">Cualquier código de barras sirve — de tu casa, un kiosco, lo que sea</p>
+
+        <div className="scan-steps">
+          <div className="scan-step">
+            <span className="scan-step-icon">📦</span>
+            <span className="scan-step-label">Elegí un producto</span>
+          </div>
+          <span className="scan-step-arrow">›</span>
+          <div className="scan-step">
+            <span className="scan-step-icon">📷</span>
+            <span className="scan-step-label">Enfocá el código</span>
+          </div>
+          <span className="scan-step-arrow">›</span>
+          <div className="scan-step">
+            <span className="scan-step-icon">✨</span>
+            <span className="scan-step-label">¡Listo!</span>
+          </div>
+        </div>
+
         <button type="button" className="scan-again scan-cta" onClick={() => setShowCamera(true)}>
-          📷 Escanear
+          📷 Escanear ahora
         </button>
       </div>
     </div>
