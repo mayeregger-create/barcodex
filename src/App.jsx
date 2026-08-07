@@ -4,7 +4,7 @@ import { generateItem } from "./core/items.js";
 import { HUES, CONTINENT_HUE } from "./data/continents.js";
 import { addScannedCharacterCode, addScannedItemCode, getScannedCharacterCodes } from "./storage.js";
 import { hasVisitedCombat, markVisitedCombat, hasSeenPartyInvite, markSeenPartyInvite } from "./onboarding.js";
-import { unlockAudio, playMusic, sfxTap, sfxScanSuccess, isMuted, toggleMuted } from "./audio.js";
+import { unlockAudio, playMusic, pickCombatTrack, sfxTap, sfxScanSuccess, isMuted, toggleMuted } from "./audio.js";
 import TitleScreen from "./components/TitleScreen.jsx";
 import ScanReveal from "./components/ScanReveal.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
@@ -47,10 +47,13 @@ export default function App() {
   const [muted, setMutedState] = useState(() => isMuted());
 
   // Musica segun pantalla — un solo lugar, cubre toda navegacion (nav, botones, "Combatir", etc).
-  // playMusic() no hace nada si el track ya esta sonando, asi que no importa que goScan tambien
-  // la dispare directo (ver mas abajo).
+  // Titulo tiene su propio tema; el resto de la navegación comparte uno; combate alterna al azar
+  // entre las 2 pistas de pelea CADA VEZ que "screen" recien pasa a "combat" (no en cada re-render
+  // — "Otro combate" no dispara este efecto de nuevo porque no toca el screen a nivel App).
   useEffect(() => {
-    playMusic(screen === "combat" ? "combat" : "ambient");
+    if (screen === "title") playMusic("title");
+    else if (screen === "combat") playMusic(pickCombatTrack());
+    else playMusic("ambient");
   }, [screen]);
 
   // Sonido de "tap" universal: un solo listener en vez de tocar cada boton de la app — ver
@@ -77,11 +80,19 @@ export default function App() {
   };
 
   const goScan = () => {
-    // El primer tap real del jugador ("▶ Jugar" en el título) es el gesto que desbloquea audio —
-    // unlockAudio() es idempotente, llamarla de nuevo en escaneos posteriores no hace nada.
-    unlockAudio();
     setResult(null);
     setScreen("scan");
+  };
+
+  // Tap en "▶ Jugar": a diferencia de goScan (reusado por "Escanear otro" en todos lados — ese
+  // tiene que ser instantáneo), acá vale una pausa corta. Es el único momento en que "Moss Gate
+  // Town" (tema del título) podría llegar a sonar: los navegadores bloquean audio hasta el primer
+  // gesto del usuario, y ese gesto es este mismo tap — que ya está navegando a otra pantalla. Sin
+  // la pausa, el cambio a la pista "ambient" pisa el título antes de que arranque a reproducirse.
+  const handleTitleStart = () => {
+    unlockAudio();
+    playMusic("title");
+    setTimeout(goScan, 550);
   };
 
   const handleToggleMute = () => setMutedState(toggleMuted());
@@ -142,7 +153,7 @@ export default function App() {
       )}
 
       <div className={`app-content${["title", "scan"].includes(screen) ? " app-content--bleed" : ""}`}>
-        {screen === "title" && <TitleScreen onStart={goScan} />}
+        {screen === "title" && <TitleScreen onStart={handleTitleStart} />}
 
         {screen === "scan" && <ScanScreen onScan={handleScan} />}
 

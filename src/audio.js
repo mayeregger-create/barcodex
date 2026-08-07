@@ -93,13 +93,29 @@ export function sfxDefeat() {
   [392, 349, 311, 262].forEach((freq, i) => beep({ freq, duration: 0.24, type: "sawtooth", gain: 0.15, delay: i * 0.15 }));
 }
 
+// "Moss Gate Town" (título) / "Moonlit Save Point" (navegación interna: Escaneo, Codex, Equipo,
+// Resultado) / "Circuit Breaker" 1 y 2 (combate, se alterna al azar cada vez que se entra a
+// pelear — ver pickCombatTrack).
 const TRACKS = {
+  title: "/audio/title.mp3",
   ambient: "/audio/ambient.mp3",
-  combat: "/audio/combat.mp3",
+  combat1: "/audio/combat1.mp3",
+  combat2: "/audio/combat2.mp3",
 };
 
+/** Elige al azar entre las 2 pistas de combate — se llama una vez por entrada a pelear, no en
+ * cada re-render (App.jsx solo la invoca cuando `screen` recien pasa a "combat"). */
+export function pickCombatTrack() {
+  return Math.random() < 0.5 ? "combat1" : "combat2";
+}
+
 export function playMusic(key) {
-  if (currentTrack === key) return;
+  // El guard tambien exige que ya este sonando de verdad (no solo que el nombre coincida): la
+  // primera vez que se pide "title", en el montaje inicial, el navegador todavia bloquea audio
+  // (no hubo gesto del usuario) y el .play() de mas abajo falla en silencio — currentTrack ya
+  // queda en "title" pese a eso. Sin este chequeo extra, el reintento real (ya con el gesto del
+  // primer tap, ver App.jsx#handleTitleStart) se saltearia por creer que "ya esta sonando".
+  if (currentTrack === key && musicEl && !musicEl.paused) return;
   currentTrack = key;
   if (!musicEl) {
     musicEl = new Audio();
