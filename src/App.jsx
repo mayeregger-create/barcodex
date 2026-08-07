@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { generateCharacter, checkDigit } from "./core/character.js";
 import { generateItem } from "./core/items.js";
 import { HUES, CONTINENT_HUE } from "./data/continents.js";
 import { addScannedCharacterCode, addScannedItemCode, getScannedCharacterCodes } from "./storage.js";
 import { hasVisitedCombat, markVisitedCombat, hasSeenPartyInvite, markSeenPartyInvite } from "./onboarding.js";
+import { unlockAudio, playMusic, sfxTap, sfxScanSuccess, isMuted, toggleMuted } from "./audio.js";
 import TitleScreen from "./components/TitleScreen.jsx";
 import ScanReveal from "./components/ScanReveal.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
@@ -43,6 +44,24 @@ export default function App() {
   // Overlay de una sola vez, se dispara al salir del primer combate de la partida (ver
   // onboarding.js). Vive fuera del ruteo de "screen" a proposito, igual que revealCode.
   const [showPartyInvite, setShowPartyInvite] = useState(false);
+  const [muted, setMutedState] = useState(() => isMuted());
+
+  // Musica segun pantalla — un solo lugar, cubre toda navegacion (nav, botones, "Combatir", etc).
+  // playMusic() no hace nada si el track ya esta sonando, asi que no importa que goScan tambien
+  // la dispare directo (ver mas abajo).
+  useEffect(() => {
+    playMusic(screen === "combat" ? "combat" : "ambient");
+  }, [screen]);
+
+  // Sonido de "tap" universal: un solo listener en vez de tocar cada boton de la app — ver
+  // charla en el chat sobre por que los SFX se sintetizan en vez de venir de archivos.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.closest("button, .codex-chip, .team-slot, .item-slot")) sfxTap();
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
 
   const handleScan = (digits12) => {
     const scanned = resolveScan(digits12);
@@ -51,15 +70,21 @@ export default function App() {
     } else {
       addScannedItemCode(scanned.data.code);
     }
+    sfxScanSuccess();
     setResult(scanned);
     setScreen("result");
     setRevealCode(scanned.data.code);
   };
 
   const goScan = () => {
+    // El primer tap real del jugador ("▶ Jugar" en el título) es el gesto que desbloquea audio —
+    // unlockAudio() es idempotente, llamarla de nuevo en escaneos posteriores no hace nada.
+    unlockAudio();
     setResult(null);
     setScreen("scan");
   };
+
+  const handleToggleMute = () => setMutedState(toggleMuted());
 
   const goCodex = () => setScreen("codex");
   const goTeam = () => setScreen("team");
@@ -105,6 +130,14 @@ export default function App() {
       {showHeader && (
         <header className="app-header">
           <h1>BarCodex</h1>
+          <button
+            type="button"
+            className="mute-toggle"
+            onClick={handleToggleMute}
+            aria-label={muted ? "Activar sonido" : "Silenciar"}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
         </header>
       )}
 

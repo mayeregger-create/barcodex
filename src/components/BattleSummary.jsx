@@ -5,8 +5,10 @@
 // (totalDamageDealt/totalDamageTaken/abilitiesUsedCount/parriesBlockedCount) se acumulan durante
 // todo el combate en CombatScreen.jsx#performAction — a proposito NUNCA se resetean, a diferencia
 // de hitsTaken/hitsDealt (esos son la moneda de cargas de Parry/Habilidad, se consumen).
+import { useEffect } from "react";
 import { RAREZA_TIER } from "../core/pixelArt/palette.js";
 import PixelSprite from "./PixelSprite.jsx";
+import { sfxVictory, sfxDefeat } from "../audio.js";
 
 function sideTotal(side, field) {
   return side.reduce((sum, b) => sum + (b[field] || 0), 0);
@@ -37,6 +39,14 @@ function TotalBar({ label, you, rival }) {
 
 export default function BattleSummary({ battle, onRestart, onTeam }) {
   const { player, rival, winner } = battle;
+
+  // Suena una sola vez al montar (esta pantalla se monta exactamente una vez por combate
+  // terminado — "Otro combate" recrea el estado desde cero, ver CombatScreen.jsx#restart).
+  useEffect(() => {
+    if (winner === "player") sfxVictory();
+    else sfxDefeat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mvp = [...player].sort((a, b) => (b.totalDamageDealt || 0) - (a.totalDamageDealt || 0))[0];
 

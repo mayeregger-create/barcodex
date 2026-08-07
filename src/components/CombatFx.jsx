@@ -4,6 +4,7 @@
 // temblor sobre quien recibe daño, y numeros flotantes (-daño en rojo/violeta, +cura en verde).
 // No toca el estado del combate — es puramente decorativo, vive y se limpia solo aca.
 import { useEffect, useRef, useState } from "react";
+import { sfxHit, sfxBlock, sfxDodge, sfxAbility } from "../audio.js";
 
 const HIGHLIGHT_MS = 650;
 const FLOATER_MS = 900;
@@ -38,18 +39,22 @@ export default function CombatFx({ events, eventSeq, children }) {
       const key = `${ev.side}-${ev.idx}`;
       if (ev.kind === "actor") {
         newTurnFx.push({ key, cls: TURN_CLASS[ev.action], label: TURN_LABEL[ev.action] });
+        if (ev.action === "ability") sfxAbility();
       } else if (ev.kind === "block") {
         newTurnFx.push({ key, cls: TURN_CLASS.block, label: TURN_LABEL.block });
+        sfxBlock();
       } else if (ev.kind === "damage") {
         hitKeys.push(key);
         newFloaters.push({
           id: `${eventSeq}-${n++}`, key, text: `-${ev.amount}`,
           cls: ev.source === "ability" ? "combat-fx-num--ability" : "combat-fx-num--dmg",
         });
+        sfxHit();
       } else if (ev.kind === "heal") {
         newFloaters.push({ id: `${eventSeq}-${n++}`, key, text: `+${ev.amount}`, cls: "combat-fx-num--heal" });
       } else if (ev.kind === "dodge") {
         newFloaters.push({ id: `${eventSeq}-${n++}`, key, text: "¡Esquiva!", cls: "combat-fx-num--dodge" });
+        sfxDodge();
       } else if (ev.kind === "paralized") {
         newFloaters.push({ id: `${eventSeq}-${n++}`, key, text: "¡Paralizado!", cls: "combat-fx-num--bad" });
       } else if (ev.kind === "miss") {
