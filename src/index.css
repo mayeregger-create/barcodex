@@ -153,6 +153,29 @@ button, input {
   box-shadow: none;
 }
 
+/* --- Feedback tactil (press states) para el resto de los elementos tocables que no comparten
+ * .scan-again — dos familias: los que ya tienen bisel/sombra 3D imitan el mismo "se hunde y
+ * pierde la sombra" de arriba; los planos (sin sombra propia) usan un achique rapido, que lee
+ * igual de bien como "esto reaccionó a tu toque" sin inventarles una sombra que no tienen. --- */
+.codex-chip:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.bottom-nav-tab:active,
+.pixel-tab:active,
+.pixel-subtab:active,
+.team-slot:active,
+.item-slot:active,
+.sheet-close:active,
+.combat-tutorial-next:active {
+  transform: scale(0.93);
+}
+
+.combat-tutorial-skip:active {
+  opacity: 0.6;
+}
+
 .scan-again.scan-again--secondary {
   background: var(--hue-bg);
   color: var(--hue-dark);
@@ -459,47 +482,6 @@ button, input {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.queued-image-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--hue-bg);
-}
-
-.hourglass {
-  font-size: 22px;
-  animation: hourglass-blink 1.8s ease-in-out infinite;
-}
-
-@keyframes hourglass-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
-.queued-image-error {
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  background: var(--hue-bg);
-  color: inherit;
-  font-size: 0.72rem;
-  opacity: 0.85;
-  padding: 6px;
-  text-align: center;
-  cursor: pointer;
-}
-
-.queued-image-error:active {
-  opacity: 1;
 }
 
 .result-heading {
