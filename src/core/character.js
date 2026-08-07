@@ -42,32 +42,27 @@ export function generateName(D, sexo, continente) {
 export function generateCharacter(code13) {
   const D = code13.split("").map(Number);
 
-  // --- Los 5 stats base (los 5 lentes numericos) ---
+  // --- Los 5 stats base (los 5 lentes numericos). Las 5 formulas son sumas/combinaciones
+  // lineales de digitos, mod 20 + 1 — a proposito, es el patron que ya daba una distribucion
+  // pareja en Fuerza/Velocidad. Antes Defensa (productos) y Energia (diferencia de mitades)
+  // usaban otra forma matematica "por variedad", pero eso las sesgaba (Defensa en diente de
+  // sierra, Energia hacia valores bajos) y Suerte solo podia dar 10/15/20 — entre las tres,
+  // Bardo salia el 41% de las veces y Mago el 6% (medido por simulacion, ver chat). ---
   let Fuerza = ((D[0] + D[2] + D[4] + D[6] + D[8] + D[10] + D[12]) % 20) + 1;
   let Velocidad = ((D[1] + D[3] + D[5] + D[7] + D[9] + D[11]) % 20) + 1;
-  let Defensa = ((D[0] * D[1] * D[2] + D[3] * D[4] * D[5] + D[6] * D[7] * D[8] + D[9] * D[10] * D[11]) % 20) + 1;
+  let Defensa = ((D[0] + D[1] + D[3] + D[4] + D[6] + D[7] + D[9] + D[10]) % 20) + 1;
   const sum1 = D.slice(0, 6).reduce((a, b) => a + b, 0);
   const sum2 = D.slice(6, 12).reduce((a, b) => a + b, 0);
-  let Energia = (Math.abs(sum1 - sum2) % 20) + 1;
+  let Energia = ((sum1 * 2 + sum2) % 20) + 1;
 
-  // --- Suerte + cascada de excedente (seccion 2.2) ---
+  // Suerte: las repeticiones de digitos (tambien deciden la rareza, ver mas abajo) suman como un
+  // empujon, no como el unico factor — asi conserva algo de "codigo con patrones raros = mas
+  // suerte" sin volver a quedar pegada a un techo de solo 3 valores posibles.
   let repeats = 0;
   for (let i = 0; i < 12; i++) if (D[i] === D[i + 1]) repeats++;
-  const suerteRaw = 10 + 5 * repeats;
-  let Suerte = Math.min(20, suerteRaw);
-  let excess = suerteRaw - 20;
-  const stats = { Fuerza, Velocidad, Defensa, Energia };
-  if (excess > 0) {
-    const order = ["Fuerza", "Velocidad", "Defensa", "Energia"];
-    let idx = D[12] % 4;
-    let guard = 0;
-    while (excess > 0 && guard < 40) {
-      const k = order[idx % 4];
-      if (stats[k] < 20) { stats[k]++; excess--; }
-      idx++; guard++;
-    }
-  }
-  const base = { ...stats, Suerte };
+  let Suerte = (((D[1] + D[4] + D[7] + D[10]) * 3 + repeats * 5) % 20) + 1;
+
+  const base = { Fuerza, Velocidad, Defensa, Energia, Suerte };
 
   // --- Clase: estadistica dominante, calculada ANTES de bonus de elemento/sexo ---
   let claseStat = STAT_ORDER[0];

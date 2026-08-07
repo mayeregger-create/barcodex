@@ -18,9 +18,9 @@ Cada estadística se calcula con una operación distinta sobre los 13 dígitos d
 |---|---|
 | **Fuerza** | Suma de dígitos en posiciones impares (D1+D3+D5+D7+D9+D11+D13), `mod 20 + 1` |
 | **Velocidad** | Suma de dígitos en posiciones pares (D2+D4+D6+D8+D10+D12), `mod 20 + 1` |
-| **Defensa** | Suma de productos de tríos consecutivos (D1×D2×D3 + D4×D5×D6 + D7×D8×D9 + D10×D11×D12), `mod 20 + 1`. Los ceros en un trío anulan ese producto — genera "puntos ciegos" de Defensa naturales en ciertos códigos |
-| **Energía** | Valor absoluto de (suma de la 1ª mitad − suma de la 2ª mitad), `mod 20 + 1` |
-| **Suerte** | Base 10 + 5 por cada par de dígitos consecutivos repetidos. Puede romper el techo de 20 (ver sección 2.2) |
+| **Defensa** | Suma de dígitos D1+D2+D4+D5+D7+D8+D10+D11, `mod 20 + 1` |
+| **Energía** | (Suma de la 1ª mitad × 2) + suma de la 2ª mitad, `mod 20 + 1` |
+| **Suerte** | (D2+D5+D8+D11) × 3 + (pares de dígitos consecutivos repetidos) × 5, `mod 20 + 1` — las repeticiones tambien deciden la rareza (ver sección 2.2), acá solo empujan la stat, no son el único factor |
 | **Elemento** | Prefijo GS1 real (primeros 2–3 dígitos) → país → continente (ver sección 3) |
 | **Habilidad especial** | El dígito verificador D13 (checksum matemático de todo el resto del código) indexa una tabla de 10 habilidades (ver sección 5) |
 | **Sexo** | Suma de los primeros 12 dígitos (sin el verificador), `mod 2`. Par → Masculino, impar → Femenino (ver sección 2.3) |
@@ -98,9 +98,11 @@ Usando 6 ítems generados de verdad con las fórmulas de arriba, aplicados a los
 
 La fila de la Daga es la más importante de leer: es el caso real donde el tope de 20 protege el balance — aunque el ítem "debería" dar +4, el personaje ya estaba en 19, así que en la práctica el bonus efectivo fue de +1. Y las últimas tres filas muestran algo clave del diseño: la mitad de las categorías de ítems **no tocan los números crudos en absoluto** — actúan como reglas que se activan en momentos puntuales del combate, que es justamente lo que evita que un ítem se sienta tan determinante como el propio código de barras del personaje.
 
-### 2.2 Suerte rompiendo la escala
+### 2.2 Balance entre las 5 estadísticas
 
-Si `Suerte_base = 10 + 5×repeticiones` supera 20, Suerte queda topeada en 20 y el excedente se reparte de a 1 punto en el ciclo fijo **Fuerza → Velocidad → Defensa → Energía**, empezando en la stat que indique `D13 mod 4` (determinístico). Si al repartir un punto una stat también llega a su tope de 20, ese punto sigue circulando al siguiente en el ciclo — en códigos extremos esto puede maximizar varias stats a la vez, lo cual está bien: sería el equivalente a un personaje "roto" que la comunidad va a cazar a propósito.
+Las 5 fórmulas son sumas/combinaciones lineales de dígitos `mod 20 + 1` — a propósito todas la misma "forma" matemática. Una versión anterior usaba productos para Defensa, una diferencia de mitades para Energía, y una fórmula de Suerte con techo fijo (`10 + 5×repeticiones`, clampeada en 20) con un mecanismo de "excedente" que repartía el sobrante en cadena por las demás estadísticas. Medido por simulación (300.000 códigos), esa versión daba Bardo el 41% de las veces y Mago solo el 6% — Suerte solo podía dar 10, 15 o 20, mucho más alto en promedio que las demás. Con las fórmulas actuales, las 5 estadísticas caen parejo en el rango 1–20 y las 5 clases salen con probabilidad comparable (18%–22% cada una).
+
+Las repeticiones de dígitos consecutivos siguen existiendo y siguen decidiendo la **rareza** (ver tabla en la sección 2, columna Suerte, y la lógica de rareza en `character.js`) — solo dejaron de ser el único factor de la estadística Suerte.
 
 ### 2.3 Sexo del personaje y su bonus
 
