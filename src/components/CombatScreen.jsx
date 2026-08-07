@@ -6,6 +6,7 @@ import { decideAction, applyAbility, tickTurnStart, registerHitTaken, registerHi
 import { applyItemToStats, itemLabel } from "../core/items.js";
 import PixelSprite from "./PixelSprite.jsx";
 import CombatFx from "./CombatFx.jsx";
+import BattleSummary from "./BattleSummary.jsx";
 
 /** Rival de CPU: en el juego final seria otro jugador — para pruebas, un escuadron al azar. */
 function randomRivalTeam() {
@@ -41,6 +42,12 @@ function makeSide(team, items = []) {
       hitsDealt: 0,
       parryCharges: 0,
       abilityCharges: 0,
+      // Acumulados de TODO el combate, para BattleSummary.jsx — a diferencia de hitsTaken/
+      // hitsDealt (que se resetean al convertirse en carga) estos nunca bajan.
+      totalDamageDealt: 0,
+      totalDamageTaken: 0,
+      abilitiesUsedCount: 0,
+      parriesBlockedCount: 0,
     };
   });
 }
@@ -84,9 +91,16 @@ function performAction(state, side, action) {
     newAttacker = result.attacker;
     newDefender = result.defender;
     log.push(...result.log);
+    newAttacker.abilitiesUsedCount = (attacker.abilitiesUsedCount || 0) + 1;
+    let abilityDmg = 0;
     for (const ev of result.events) {
       if (ev.role === "actor") events.push({ side, idx: attackerIdx, ...ev });
       else events.push({ side: defenderSide, idx: defenderIdx, ...ev });
+      if (ev.kind === "damage") abilityDmg += ev.amount;
+    }
+    if (abilityDmg > 0) {
+      newAttacker.totalDamageDealt = (newAttacker.totalDamageDealt || 0) + abilityDmg;
+      newDefender.totalDamageTaken = (newDefender.totalDamageTaken || 0) + abilityDmg;
     }
   } else if (action === "parry") {
     newAttacker = { ...attacker, parryArmed: true, parryCharges: attacker.parryCharges - 1 };
@@ -103,12 +117,15 @@ function performAction(state, side, action) {
       newDefender.parryArmed = false;
       if (result.blocked) {
         events.push({ side: defenderSide, idx: defenderIdx, kind: "block" });
+        newDefender.parriesBlockedCount = (defender.parriesBlockedCount || 0) + 1;
         if (result.reflectDmg > 0) {
           const applied = applyIncoming(newAttacker.status, result.reflectDmg);
           newAttacker.status = applied.status;
           newAttacker.hp = Math.max(0, attacker.hp - applied.dmg);
           newAttacker = registerHitTaken(newAttacker);
           newDefender = registerHitDealt(newDefender);
+          newAttacker.totalDamageTaken = (newAttacker.totalDamageTaken || 0) + applied.dmg;
+          newDefender.totalDamageDealt = (newDefender.totalDamageDealt || 0) + applied.dmg;
           log.push(`${defender.character.nombre} bloquea y refleja ${applied.dmg} de daño a ${attacker.character.nombre} (ignora su Defensa).`);
           events.push({ side, idx: attackerIdx, kind: "damage", amount: applied.dmg, source: "reflect" });
         } else {
@@ -122,6 +139,8 @@ function performAction(state, side, action) {
         newDefender.hp = Math.max(0, defender.hp - applied.dmg);
         newDefender = registerHitTaken(newDefender);
         newAttacker = registerHitDealt(newAttacker);
+        newDefender.totalDamageTaken = (newDefender.totalDamageTaken || 0) + applied.dmg;
+        newAttacker.totalDamageDealt = (newAttacker.totalDamageDealt || 0) + applied.dmg;
         log.push(`${attacker.character.nombre} ataca — ${defender.character.nombre} falla el bloqueo y recibe ${applied.dmg}.`);
         events.push({ side: defenderSide, idx: defenderIdx, kind: "damage", amount: applied.dmg, source: "attack" });
       }
@@ -136,6 +155,8 @@ function performAction(state, side, action) {
       } else {
         newDefender = registerHitTaken(newDefender);
         newAttacker = registerHitDealt(newAttacker);
+        newDefender.totalDamageTaken = (newDefender.totalDamageTaken || 0) + applied.dmg;
+        newAttacker.totalDamageDealt = (newAttacker.totalDamageDealt || 0) + applied.dmg;
         log.push(
           `${attacker.character.nombre} ataca a ${defender.character.nombre} por ${applied.dmg}` +
           `${isCrit ? " (¡Crítico!)" : ""}${applied.halved ? " (mitigado a la mitad)" : ""}.`
@@ -236,6 +257,10 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
 
   const restart = () => setBattle(initialBattle(playerTeam, playerItems, randomRivalTeam()));
 
+  if (battle.phase === "over") {
+    return <BattleSummary battle={battle} onRestart={restart} onTeam={onTeam} />;
+  }
+
   return (
     <div className="combat-screen">
       <CombatFx events={battle.events} eventSeq={battle.eventSeq}>
@@ -264,30 +289,13 @@ export default function CombatScreen({ playerTeam, playerItems, onTeam }) {
         ))}
       </div>
 
-      {battle.phase === "battle" ? (
-        <div className="combat-actions">
-          <button
-            type="button"
-            className="scan-again scan-again--secondary combat-speed-btn"
-            onClick={() => setSpeed((s) => (s === 1 ? 2 : 1))}
-          >
-            Velocidad ×{speed}
-          </button>
-        </div>
-      ) : (
-        <div className={`combat-banner combat-banner--${battle.winner}`}>
-          {battle.winner === "player" ? "¡Victoria!" : "Derrota"}
-        </div>
-      )}
-
-      <div className="result-actions">
-        {battle.phase === "over" && (
-          <button className="scan-again" onClick={restart}>
-            Otro combate
-          </button>
-        )}
-        <button className="scan-again scan-again--secondary" onClick={onTeam}>
-          Volver al Equipo
+      <div className="combat-actions">
+        <button
+          type="button"
+          className="scan-again scan-again--secondary combat-speed-btn"
+          onClick={() => setSpeed((s) => (s === 1 ? 2 : 1))}
+        >
+          Velocidad ×{speed}
         </button>
       </div>
     </div>

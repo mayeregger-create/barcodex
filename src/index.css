@@ -113,7 +113,8 @@ button, input {
 .result-card,
 .codex-screen,
 .team-screen,
-.combat-screen {
+.combat-screen,
+.battle-summary {
   background: var(--hue-bg);
   border: var(--bevel) solid var(--hue-dark);
   box-shadow:
@@ -1353,23 +1354,229 @@ button, input {
   margin: 0 auto;
 }
 
-.combat-banner {
-  flex: none;
-  text-align: center;
-  font-size: 1rem;
-  font-weight: 700;
-  padding: 8px;
-  border: 2px solid var(--hue-dark);
+/* --- Pantalla de cierre del combate (BattleSummary.jsx) — reemplaza por completo las filas de
+ * batalla cuando termina, en vez de ser solo un cartelito arriba de los mismos botones. --- */
+.battle-summary {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
 }
 
-.combat-banner--player {
-  background: #C0DD97;
+.battle-summary-banner {
+  flex: none;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  padding: 10px;
+  border: var(--bevel) solid var(--hue-dark);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.battle-summary-banner--player {
+  background: #c0dd97;
   color: #173404;
 }
 
-.combat-banner--rival {
-  background: #F7C1C1;
+.battle-summary-banner--rival {
+  background: #f7c1c1;
   color: #501313;
+}
+
+.battle-summary-mvp {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--paper);
+  border: var(--bevel) solid var(--hue-dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.battle-summary-mvp-portrait {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  overflow: hidden;
+  background: var(--paper);
+  image-rendering: pixelated;
+}
+
+.battle-summary-mvp-portrait canvas,
+.battle-summary-mvp-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.battle-summary-mvp-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.battle-summary-mvp-tag {
+  align-self: flex-start;
+  background: #f2b134;
+  color: #171018;
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  margin-bottom: 3px;
+}
+
+.battle-summary-mvp-info h3 {
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+  color: var(--hue-dark);
+}
+
+.battle-summary-mvp-line {
+  font-size: 0.68rem;
+  color: var(--hue-mid);
+}
+
+.battle-summary-totals {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.battle-summary-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.battle-summary-bar-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.battle-summary-bar-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.battle-summary-bar-tag {
+  flex: none;
+  width: 32px;
+  font-size: 0.58rem;
+  color: var(--text-body);
+}
+
+.battle-summary-bar-track {
+  flex: 1;
+  height: 8px;
+  border: 1px solid var(--hue-dark);
+  background: #fff;
+  overflow: hidden;
+}
+
+.battle-summary-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.battle-summary-bar-fill--you {
+  background: var(--hue-mid);
+}
+
+.battle-summary-bar-fill--rival {
+  background: #a32d2d;
+}
+
+.battle-summary-bar-value {
+  flex: none;
+  width: 28px;
+  text-align: right;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--hue-dark);
+}
+
+.battle-summary-count-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  color: var(--text-body);
+}
+
+.battle-summary-roster {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.battle-summary-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+}
+
+.battle-summary-row--dead {
+  opacity: 0.55;
+}
+
+.battle-summary-row-headshot {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.battle-summary-row-headshot canvas,
+.battle-summary-row-headshot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.battle-summary-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-summary-row-stats {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6rem;
+  color: var(--text-body);
+}
+
+.battle-summary-row-fallen {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #a32d2d;
 }
 
 /* --- Nav inferior: parte del layout en flex (no position:fixed), asi el resto de la pantalla
