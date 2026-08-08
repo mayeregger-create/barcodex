@@ -2,8 +2,14 @@
 // Recorrido de 4 pasos que aparece SOLO la primera vez que el jugador entra a un combate (ver
 // onboarding.js#hasSeenCombatTutorial) — CombatScreen.jsx pausa el autobattle mientras esto esta
 // activo (nadie quiere leer una explicación mientras el combate sigue de largo). Cada paso mide
-// la posicion real de un elemento ya en pantalla y dibuja un marco alrededor + un cartel con la
-// explicación, en vez de ser un modal generico que no señala nada concreto.
+// la posicion real de un elemento ya en pantalla y dibuja un marco alrededor, en vez de ser un
+// modal generico que no señala nada concreto.
+//
+// El cartel con el texto y el boton "Siguiente" SIEMPRE va anclado abajo de todo, en una posicion
+// fija — a proposito no se calcula a partir de la posicion del elemento senalado. Antes s se
+// calculaba (arriba o abajo del marco segun donde cayera), y en el paso de la barra de vida el
+// marco quedaba lo bastante abajo como para empujar el cartel entero fuera de la pantalla — sin
+// scroll posible en esta pantalla, eso dejaba al jugador sin forma de tocar "Siguiente".
 import { useEffect, useState } from "react";
 
 const STEPS = [
@@ -37,8 +43,6 @@ export default function CombatFirstRunTutorial({ onDone }) {
   const isLast = step + 1 >= STEPS.length;
   const next = () => (isLast ? onDone() : setStep((s) => s + 1));
 
-  const captionBelow = !rect || rect.top < window.innerHeight * 0.55;
-
   return (
     <div className="combat-tutorial-backdrop">
       {rect && (
@@ -48,10 +52,7 @@ export default function CombatFirstRunTutorial({ onDone }) {
         />
       )}
 
-      <div
-        className="combat-tutorial-caption"
-        style={captionBelow ? { top: (rect ? rect.bottom : 20) + 10 } : { bottom: window.innerHeight - (rect ? rect.top : window.innerHeight - 20) + 10 }}
-      >
+      <div className="combat-tutorial-caption">
         <p>{STEPS[step].text}</p>
         <div className="combat-tutorial-actions">
           <button type="button" className="combat-tutorial-skip" onClick={onDone}>Saltar</button>

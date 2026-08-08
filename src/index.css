@@ -1464,10 +1464,14 @@ button, input {
   transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
 }
 
+/* Posicion fija abajo de todo — a proposito, no calculada a partir de donde cae el elemento
+ * senalado (ver comentario en CombatFirstRunTutorial.jsx). Asi el boton "Siguiente" nunca puede
+ * terminar fuera de la pantalla, sea cual sea el paso. */
 .combat-tutorial-caption {
   position: fixed;
   left: 16px;
   right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   z-index: 82;
   background: var(--paper);
   border: var(--bevel) solid var(--line);
