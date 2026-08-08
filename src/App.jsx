@@ -84,15 +84,13 @@ export default function App() {
     setScreen("scan");
   };
 
-  // Tap en "▶ Jugar": a diferencia de goScan (reusado por "Escanear otro" en todos lados — ese
-  // tiene que ser instantáneo), acá vale una pausa corta. Es el único momento en que "Moss Gate
-  // Town" (tema del título) podría llegar a sonar: los navegadores bloquean audio hasta el primer
-  // gesto del usuario, y ese gesto es este mismo tap — que ya está navegando a otra pantalla. Sin
-  // la pausa, el cambio a la pista "ambient" pisa el título antes de que arranque a reproducirse.
-  const handleTitleStart = () => {
+  // Primer toque en el "portal" del título (ver TitleScreen.jsx#title-gate) — es el único gesto
+  // real antes de que el jugador vea el logo/botón, así que es la única oportunidad de que "Moss
+  // Gate Town" (tema del título) suene MIENTRAS todavía está mirando esta pantalla, en vez de una
+  // fracción de segundo antes de navegar a otra.
+  const handleTitleWake = () => {
     unlockAudio();
     playMusic("title");
-    setTimeout(goScan, 550);
   };
 
   const handleToggleMute = () => setMutedState(toggleMuted());
@@ -153,7 +151,7 @@ export default function App() {
       )}
 
       <div className={`app-content${["title", "scan"].includes(screen) ? " app-content--bleed" : ""}`}>
-        {screen === "title" && <TitleScreen onStart={handleTitleStart} />}
+        {screen === "title" && <TitleScreen onStart={goScan} onWake={handleTitleWake} />}
 
         {screen === "scan" && <ScanScreen onScan={handleScan} />}
 
