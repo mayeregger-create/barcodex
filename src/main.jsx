@@ -9,9 +9,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
-// Solo en produccion: el SW interfiere con el hot-reload de Vite en desarrollo.
+// Etapa de demo: sin service worker por ahora (ver public/sw.js — kill-switch para limpiar
+// instalaciones viejas que dejaban el juego atascado en una build vieja, solo esquivable
+// entrando en modo incógnito). No registramos uno nuevo; a quien ya tenga el viejo activo, el
+// navegador lo actualiza solo la próxima vez que visite (chequeo automático de update en cada
+// navegación dentro del scope) y el kill-switch se autodestruye.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => reg.unregister());
   });
 }

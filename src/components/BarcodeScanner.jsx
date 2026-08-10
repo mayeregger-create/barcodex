@@ -19,6 +19,14 @@ function toDigits12(text) {
   return null;
 }
 
+/** 12 dígitos al azar — App#resolveScan calcula el verificador y arma el código de 13. Provisorio
+ * para la etapa de demo: cubre a quien no tiene un producto real a mano para escanear. */
+function randomDigits12() {
+  let d = "";
+  for (let i = 0; i < 12; i++) d += Math.floor(Math.random() * 10);
+  return d;
+}
+
 function errorMessage(err) {
   if (err?.name === "NotAllowedError") return "Sin permiso de cámara — habilitalo en los ajustes del navegador.";
   if (err?.name === "NotFoundError") return "No se encontró ninguna cámara en este dispositivo.";
@@ -74,6 +82,12 @@ export default function BarcodeScanner({ onDetected, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleRandom = () => {
+    if (detectedRef.current) return;
+    detectedRef.current = true;
+    onDetected(randomDigits12());
+  };
+
   return (
     <div className="scanner-screen">
       <div className="scanner-viewport">
@@ -82,6 +96,9 @@ export default function BarcodeScanner({ onDetected, onClose }) {
         {error && <p className="scan-error scanner-error">{error}</p>}
       </div>
       <p className="scanner-hint">{error ? "Podés escribir el código a mano." : "Apuntá al código de barras del producto."}</p>
+      <button type="button" className="scan-again scan-again--random" onClick={handleRandom}>
+        🎲 Generar personaje random <span className="scan-again--random-tag">(provisorio)</span>
+      </button>
       <button type="button" className="scan-again scan-again--secondary" onClick={onClose}>
         {error ? "Volver" : "Cancelar"}
       </button>

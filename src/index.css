@@ -200,6 +200,22 @@ button, input {
   color: var(--hue-dark);
 }
 
+/* Botón provisorio de demo (BarcodeScanner): mismo lenguaje de botón pixel, pero con borde
+ * punteado + acento violeta para que se lea como "atajo de prueba", no como parte final del loop
+ * de escaneo real. Sacar cuando el flujo de cámara ya no dependa de tener un producto a mano. */
+.scan-again.scan-again--random {
+  background: #4a3a5c;
+  border-style: dashed;
+}
+
+.scan-again--random-tag {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 400;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
 .result-actions {
   display: flex;
   gap: 8px;
