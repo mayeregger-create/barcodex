@@ -2459,3 +2459,294 @@ button, input {
     animation: none !important;
   }
 }
+
+/* --- Elegir modalidad (ModeSelectScreen.jsx): puerta de entrada a Combate, decide entre el duelo
+ * 1vs1 de siempre y el tablero nuevo. Reusa el mismo panel-base (ver .team-screen) via clase
+ * generica de abajo. --- */
+.mode-select-screen {
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-select-screen h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--hue-dark);
+  text-shadow: 1px 1px 0 var(--paper);
+}
+
+.mode-select-hint {
+  margin: 0;
+  font-size: 0.65rem;
+  color: var(--hue-dark);
+}
+
+.mode-card {
+  position: relative;
+  text-align: left;
+  background: var(--paper);
+  border: var(--bevel) solid var(--line);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+  font: inherit;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.45),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.15),
+    3px 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.mode-card:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+.mode-card-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.mode-card-title {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--hue-dark);
+}
+
+.mode-card-desc {
+  font-size: 0.62rem;
+  color: var(--hue-dark);
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+.mode-card--tft {
+  border-color: var(--hue-dark);
+  background: var(--hue-bg);
+}
+
+.mode-card-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--paper);
+  background: var(--hue-mid);
+  border: 1px solid var(--line);
+  padding: 2px 5px;
+}
+
+/* --- Tablero de Teamfight Tactics: 3x3, compartido entre armado (TftBoardScreen) y batalla
+ * (TftCombatScreen) — los casilleros de placement son mas grandes (se tocan para elegir a alguien)
+ * que los de batalla (2 tableros a la vez, menos lugar). --- */
+.tft-board-screen {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.tft-board-screen h2 {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--hue-dark);
+  text-shadow: 1px 1px 0 var(--paper);
+}
+
+.tft-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tft-grid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tft-row-label {
+  flex: none;
+  width: 34px;
+  font-size: 0.52rem;
+  color: var(--hue-dark);
+  text-align: right;
+  line-height: 1.1;
+}
+
+.tft-grid-cells {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.tft-cell {
+  flex: 1;
+  max-width: 88px;
+  aspect-ratio: 1 / 1;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  gap: 2px;
+  cursor: pointer;
+  font: inherit;
+  overflow: hidden;
+}
+
+.tft-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tft-cell--empty {
+  border-style: dashed;
+  background: var(--hue-bg);
+}
+
+.tft-cell-plus {
+  font-size: 1.1rem;
+  color: var(--hue-dark);
+  opacity: 0.6;
+}
+
+.tft-cell-headshot {
+  position: relative;
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.tft-cell-headshot canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tft-cell-name {
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--hue-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.tft-board-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.tft-board-actions .scan-again {
+  flex: 1;
+}
+
+.mode-card--tft-cta {
+  background: var(--hue-mid);
+}
+
+/* --- Batalla de Teamfight Tactics (TftCombatScreen.jsx): 2 tableros espejados contra una
+ * division central — la fila "Frente" de cada uno queda pegada al VS. --- */
+.tft-combat-screen {
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.tft-grid--battle {
+  gap: 4px;
+  flex: none;
+}
+
+.tft-grid--battle .tft-grid-cells {
+  gap: 4px;
+}
+
+.tft-divider {
+  flex: none;
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.6rem;
+  color: var(--hue-mid);
+  letter-spacing: 0.1em;
+  padding: 2px 0;
+}
+
+.tft-cell--void {
+  flex: 1;
+  max-width: 64px;
+  aspect-ratio: 1 / 1;
+  visibility: hidden;
+}
+
+.tft-cell--battle {
+  flex: 1;
+  max-width: 64px;
+  aspect-ratio: 1 / 1;
+  background: var(--paper);
+  border: 2px solid var(--hue-dark);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  gap: 2px;
+  overflow: hidden;
+  transition: opacity 0.2s, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.tft-cell--battle .tft-cell-headshot {
+  width: 70%;
+}
+
+.tft-cell--dead {
+  opacity: 0.35;
+}
+
+.tft-cell--acting {
+  border-color: var(--hue-mid);
+  box-shadow: 0 0 0 2px var(--hue-mid);
+}
+
+.tft-cell-hp-bar {
+  width: 90%;
+  height: 4px;
+  background: #fff;
+  border: 1px solid var(--hue-dark);
+  overflow: hidden;
+}
+
+.tft-cell-hp-fill {
+  height: 100%;
+  background: var(--hue-mid);
+  transition: width 0.3s ease;
+}
+
+.tft-log {
+  flex: 1;
+  min-height: 0;
+}

@@ -15,6 +15,9 @@ import TeamScreen from "./components/TeamScreen.jsx";
 import CombatScreen from "./components/CombatScreen.jsx";
 import BottomNav from "./components/BottomNav.jsx";
 import PartyInviteScreen from "./components/PartyInviteScreen.jsx";
+import ModeSelectScreen from "./components/ModeSelectScreen.jsx";
+import TftBoardScreen from "./components/TftBoardScreen.jsx";
+import TftCombatScreen from "./components/TftCombatScreen.jsx";
 
 const TEAM_SIZE = 3;
 
@@ -31,13 +34,17 @@ function resolveScan(digits12) {
 
 // Pantallas donde la barra inferior queda oculta: son tomas de pantalla completa
 // (titulo, revelación de escaneo, combate en curso), no "bases" entre las que navegar.
-const NAV_HIDDEN_ON = ["title", "result", "combat"];
+const NAV_HIDDEN_ON = ["title", "result", "combat", "tftCombat"];
 
 export default function App() {
-  const [screen, setScreen] = useState("title"); // "title" | "scan" | "result" | "codex" | "team" | "combat"
+  // "title" | "scan" | "result" | "codex" | "team" | "combat" | "modeSelect" | "tftBoard" | "tftCombat"
+  const [screen, setScreen] = useState("title");
   const [result, setResult] = useState(null);
   const [combatTeam, setCombatTeam] = useState(null);
   const [combatItems, setCombatItems] = useState(null);
+  // Formación elegida en TftBoardScreen — se guarda para poder volver a la batalla al tocar el
+  // tab Combate de nuevo (mismo patrón que combatTeam para Partida Rápida).
+  const [tftPlacements, setTftPlacements] = useState(null);
   // Código de la revelación en curso: la ficha de resultado ya está montada y lista debajo (ver
   // render mas abajo), este overlay solo dramatiza la transición hacia ella.
   const [revealCode, setRevealCode] = useState(null);
@@ -103,6 +110,13 @@ export default function App() {
     setScreen("combat");
   };
 
+  const goModeSelect = () => setScreen("modeSelect");
+  const goTftBoard = () => setScreen("tftBoard");
+  const startTft = (placements) => {
+    setTftPlacements(placements);
+    setScreen("tftCombat");
+  };
+
   // Salir de un combate ya jugado: la primera vez que esto pasa en toda la partida, se intercepta
   // con la invitación a seguir escaneando en vez de ir directo al Equipo (ver PartyInviteScreen).
   const handleExitCombat = () => {
@@ -119,7 +133,11 @@ export default function App() {
     if (tab === "scan") goScan();
     else if (tab === "codex") goCodex();
     else if (tab === "team") goTeam();
-    else if (tab === "combat") setScreen(combatTeam ? "combat" : "team");
+    else if (tab === "combat") {
+      if (combatTeam) setScreen("combat");
+      else if (tftPlacements) setScreen("tftCombat");
+      else goModeSelect();
+    }
   };
 
   const hue = screen === "result" && result?.kind === "character"
@@ -128,7 +146,11 @@ export default function App() {
 
   const showNav = !NAV_HIDDEN_ON.includes(screen);
   const showHeader = screen !== "title";
-  const activeTab = screen === "result" ? "scan" : screen;
+  const activeTab = screen === "result"
+    ? "scan"
+    : ["modeSelect", "tftBoard", "tftCombat"].includes(screen)
+      ? "combat"
+      : screen;
   // Apenas junta 3 personajes, resalta el tab Combate — hasta que lo visite una vez (ver
   // onboarding.js). No se recalcula en cada tecla: solo importa en los renders donde puede haber
   // cambiado (despues de escanear), que es barato de leer de localStorage igual.
@@ -169,6 +191,14 @@ export default function App() {
 
         {screen === "combat" && combatTeam && (
           <CombatScreen playerTeam={combatTeam} playerItems={combatItems} onTeam={handleExitCombat} />
+        )}
+
+        {screen === "modeSelect" && <ModeSelectScreen onQuick={goTeam} onTft={goTftBoard} />}
+
+        {screen === "tftBoard" && <TftBoardScreen onBack={goModeSelect} onFight={startTft} />}
+
+        {screen === "tftCombat" && tftPlacements && (
+          <TftCombatScreen playerPlacements={tftPlacements} onExit={goModeSelect} />
         )}
       </div>
 

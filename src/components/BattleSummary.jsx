@@ -37,7 +37,7 @@ function TotalBar({ label, you, rival }) {
   );
 }
 
-export default function BattleSummary({ battle, onRestart, onTeam }) {
+export default function BattleSummary({ battle, onRestart, onTeam, restartLabel = "Otro combate", backLabel = "Volver al Equipo" }) {
   const { player, rival, winner } = battle;
 
   // Suena una sola vez al montar (esta pantalla se monta exactamente una vez por combate
@@ -104,8 +104,8 @@ export default function BattleSummary({ battle, onRestart, onTeam }) {
       </div>
 
       <div className="result-actions">
-        <button className="scan-again" onClick={onRestart}>Otro combate</button>
-        <button className="scan-again scan-again--secondary" onClick={onTeam}>Volver al Equipo</button>
+        <button className="scan-again" onClick={onRestart}>{restartLabel}</button>
+        <button className="scan-again scan-again--secondary" onClick={onTeam}>{backLabel}</button>
       </div>
     </div>
   );
