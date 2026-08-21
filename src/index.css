@@ -2750,3 +2750,134 @@ button, input {
   flex: 1;
   min-height: 0;
 }
+
+/* --- CardHero.jsx: evolucion de ScanReveal — misma fase de decodificacion (reusa las clases
+ * .scan-reveal-* de arriba tal cual), y despues la carta viva a pantalla completa con el motor
+ * Titiritero (ver src/titiritero/). --- */
+.card-hero {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: var(--ink);
+  animation: scan-reveal-fade-in 0.15s ease both;
+}
+
+.card-hero-decode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.card-hero-flashpulse {
+  position: fixed;
+  inset: 0;
+  background: #fff8ec;
+  animation: card-hero-flash 160ms ease;
+  pointer-events: none;
+}
+
+@keyframes card-hero-flash {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.card-hero--live {
+  padding: 0;
+  gap: 0;
+  cursor: pointer;
+  animation: none;
+}
+
+.card-hero-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  animation: card-hero-canvas-in 0.4s ease both;
+}
+
+@keyframes card-hero-canvas-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.card-hero-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 33.333%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  padding: 16px 24px;
+  color: var(--paper);
+  animation: card-hero-panel-in 0.5s ease 0.15s both;
+}
+
+@keyframes card-hero-panel-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card-hero-rareza {
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #e6c34d;
+}
+
+.rareza-panel--comun .card-hero-rareza { color: #c7c7c7; }
+.rareza-panel--poco-comun .card-hero-rareza { color: #d7b483; }
+.rareza-panel--raro .card-hero-rareza { color: #dfe3e6; }
+.rareza-panel--epico .card-hero-rareza { color: #f3d876; }
+
+.card-hero-name {
+  margin: 2px 0 0;
+  font-family: var(--font-pixel);
+  font-size: 1.3rem;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.card-hero-epithet {
+  font-size: 0.68rem;
+  opacity: 0.85;
+}
+
+.card-hero-sub {
+  font-size: 0.62rem;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.card-hero-tap-hint {
+  margin-top: 8px;
+  font-size: 0.55rem;
+  opacity: 0.55;
+  animation: card-hero-hint-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes card-hero-hint-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-hero-canvas,
+  .card-hero-panel,
+  .card-hero-tap-hint {
+    animation: none;
+  }
+}

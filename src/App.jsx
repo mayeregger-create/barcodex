@@ -7,6 +7,7 @@ import { hasVisitedCombat, markVisitedCombat, hasSeenPartyInvite, markSeenPartyI
 import { unlockAudio, playMusic, pickCombatTrack, sfxTap, sfxScanSuccess, isMuted, toggleMuted } from "./audio.js";
 import TitleScreen from "./components/TitleScreen.jsx";
 import ScanReveal from "./components/ScanReveal.jsx";
+import CardHero from "./components/CardHero.jsx";
 import ScanScreen from "./components/ScanScreen.jsx";
 import CharacterCard from "./components/CharacterCard.jsx";
 import ItemCard from "./components/ItemCard.jsx";
@@ -204,7 +205,12 @@ export default function App() {
 
       {showNav && <BottomNav active={activeTab} onNavigate={handleNavigate} highlightKey={highlightNavKey} />}
 
-      {revealCode && <ScanReveal code={revealCode} onFinish={() => setRevealCode(null)} />}
+      {revealCode && result?.kind === "character" && (
+        <CardHero character={result.data} onFinish={() => setRevealCode(null)} />
+      )}
+      {revealCode && result?.kind === "item" && (
+        <ScanReveal code={revealCode} onFinish={() => setRevealCode(null)} />
+      )}
 
       {showPartyInvite && (
         <PartyInviteScreen

@@ -1,0 +1,46 @@
+// src/titiritero/data/slotRegistry.js
+// Tabla de slots del documento Titiritero §3.3, tal cual — hueso, z de dibujo global, si es
+// obligatorio. `rivets` y `frame` no cuelgan de un hueso (se dibujan en espacio de carta, ver
+// framer.js), por eso su `bone` es null.
+export const SLOT_REGISTRY = [
+  { id: "cape_back", bone: "torso", z: 10, required: false },
+  { id: "upperarm_far", bone: "upperarm_far", z: 20, required: true },
+  { id: "upperarm_far_cloth", bone: "upperarm_far", z: 21, required: false },
+  { id: "forearm_far", bone: "forearm_far", z: 22, required: true },
+  { id: "forearm_far_cloth", bone: "forearm_far", z: 23, required: false },
+  { id: "hand_far", bone: "hand_far", z: 24, required: true },
+  { id: "weapon_far", bone: "hand_far", z: 25, required: false },
+  { id: "pauldron_far", bone: "shoulder_far", z: 26, required: false },
+  { id: "thigh_far", bone: "thigh_far", z: 30, required: true },
+  { id: "thigh_far_cloth", bone: "thigh_far", z: 31, required: false },
+  { id: "shin_far", bone: "shin_far", z: 32, required: true },
+  { id: "shin_far_armor", bone: "shin_far", z: 33, required: false },
+  { id: "foot_far", bone: "foot_far", z: 34, required: true },
+  { id: "thigh_near", bone: "thigh_near", z: 40, required: true },
+  { id: "thigh_near_cloth", bone: "thigh_near", z: 41, required: false },
+  { id: "shin_near", bone: "shin_near", z: 42, required: true },
+  { id: "shin_near_armor", bone: "shin_near", z: 43, required: false },
+  { id: "foot_near", bone: "foot_near", z: 44, required: true },
+  { id: "hips", bone: "hips", z: 50, required: true },
+  { id: "hips_armor", bone: "hips", z: 51, required: false },
+  { id: "abdomen", bone: "abdomen", z: 55, required: true },
+  { id: "abdomen_armor", bone: "abdomen", z: 56, required: false },
+  { id: "torso", bone: "torso", z: 60, required: true },
+  { id: "torso_cloth", bone: "torso", z: 61, required: false },
+  { id: "torso_armor", bone: "torso", z: 62, required: false },
+  { id: "head", bone: "head", z: 70, required: true },
+  { id: "head_hair", bone: "head", z: 71, required: false },
+  { id: "head_face", bone: "head", z: 72, required: false },
+  { id: "helmet", bone: "head", z: 73, required: false },
+  { id: "upperarm_near", bone: "upperarm_near", z: 80, required: true },
+  { id: "upperarm_near_cloth", bone: "upperarm_near", z: 81, required: false },
+  { id: "pauldron_near", bone: "shoulder_near", z: 82, required: false },
+  { id: "forearm_near", bone: "forearm_near", z: 84, required: true },
+  { id: "forearm_near_cloth", bone: "forearm_near", z: 85, required: false },
+  { id: "hand_near", bone: "hand_near", z: 86, required: true },
+  { id: "weapon_near", bone: "hand_near", z: 87, required: false },
+  { id: "rivets", bone: null, z: 95, required: true },
+  { id: "frame", bone: null, z: 99, required: true },
+];
+
+export const REQUIRED_BODY_SLOTS = SLOT_REGISTRY.filter((s) => s.required && s.bone);
