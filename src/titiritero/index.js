@@ -64,39 +64,46 @@ export function mountTitiritoreCard(canvas, character) {
     if (cancelled) return;
 
     function frame(now) {
-      const t = (now - start) / 1000;
-      const w = canvas.width;
-      const h = canvas.height;
+      // Un frame que revienta no puede congelar la carta para siempre — mejor un frame perdido
+      // (log en consola) que la animacion entera trabada sin ninguna pista de por que.
+      try {
+        const t = (now - start) / 1000;
+        const w = canvas.width;
+        const h = canvas.height;
 
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, w, h);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, w, h);
 
-      // Fondo: wash suave del color de continente, mas oscuro hacia abajo (donde empieza el panel
-      // de datos en HTML) para que el texto encima siempre tenga contraste sin importar la rareza.
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, wash);
-      grad.addColorStop(ART_FRACTION, wash);
-      grad.addColorStop(1, "#171018");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
+        // Fondo: wash suave del color de continente, mas oscuro hacia abajo (donde empieza el
+        // panel de datos en HTML) para que el texto encima siempre tenga contraste sin importar
+        // la rareza.
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, wash);
+        grad.addColorStop(ART_FRACTION, wash);
+        grad.addColorStop(1, "#171018");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
 
-      // Luz que se mece suave — el vector de sombra oscila, no es fijo, asi la carta se siente
-      // "con volumen bajo una luz real" y no un sticker plano (ver chat).
-      const lightVector = { x: Math.sin(t * 0.35) * 0.5, y: -1 };
+        // Luz que se mece suave — el vector de sombra oscila, no es fijo, asi la carta se siente
+        // "con volumen bajo una luz real" y no un sticker plano (ver chat).
+        const lightVector = { x: Math.sin(t * 0.35) * 0.5, y: -1 };
 
-      const { world } = composeCard({
-        pieceMap,
-        rig: HUMANOID_RIG,
-        pose,
-        catalog,
-        slotRegistry: SLOT_REGISTRY,
-        renderer,
-        t,
-        lightVector,
-        baseMatrix,
-      });
+        const { world } = composeCard({
+          pieceMap,
+          rig: HUMANOID_RIG,
+          pose,
+          catalog,
+          slotRegistry: SLOT_REGISTRY,
+          renderer,
+          t,
+          lightVector,
+          baseMatrix,
+        });
 
-      drawFramer(ctx, { card, canvasWidth: w, canvasHeight: h, boneWorld: world });
+        drawFramer(ctx, { card, canvasWidth: w, canvasHeight: h, boneWorld: world });
+      } catch (err) {
+        console.error("[titiritero] fallo dibujando un frame", err);
+      }
 
       if (!cancelled) raf = requestAnimationFrame(frame);
     }
