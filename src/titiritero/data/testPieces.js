@@ -4,40 +4,31 @@
 // probar que las capas por encima (armadura sobre torso, etc.) funcionan. El pivote va SIEMPRE al
 // centro del rectangulo — simplificacion deliberada para piezas de prueba (no hay anatomia real
 // que respetar todavia); cuando entre arte real cada pieza define su propio pivote segun donde
-// este el remache de verdad. Solo corre en el navegador (usa <canvas> para generar los PNG como
-// data URI) — el test de determinismo (resolver) no importa este archivo.
-
+// este el remache de verdad.
+//
+// Se generan como SVG en texto (data:image/svg+xml,...), NO dibujando en un <canvas> y llamando
+// toDataURL() — esa era la version original, y es justo lo que muchas extensiones de privacidad
+// de Chrome (proteccion anti-fingerprinting, comun en uBlock Origin y otras) interceptan,
+// devolviendo un canvas en blanco sin ningun error visible. Un string de SVG no toca canvas para
+// nada en esta etapa (el renderer si usa canvas para DIBUJAR la imagen ya cargada, eso es
+// inevitable y no lo bloquea ninguna extension real) — ver chat.
 const OUTLINE = "#1a1610";
 const PIVOT_MARK = "#ffffff";
 
 function makeRectPiece({ id, slot, color, width, height, rarityMin = "Comun", tags = [], excludes = [] }) {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, width, height);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = OUTLINE;
-  ctx.strokeRect(1.5, 1.5, width - 3, height - 3);
-
-  // Marca de pivote: cruz en el centro, para que se vea a ojo si el enganche calza.
   const cx = width / 2;
   const cy = height / 2;
-  ctx.strokeStyle = PIVOT_MARK;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(cx - 8, cy);
-  ctx.lineTo(cx + 8, cy);
-  ctx.moveTo(cx, cy - 8);
-  ctx.lineTo(cx, cy + 8);
-  ctx.stroke();
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<rect x="1.5" y="1.5" width="${width - 3}" height="${height - 3}" fill="${color}" stroke="${OUTLINE}" stroke-width="3"/>` +
+    `<line x1="${cx - 8}" y1="${cy}" x2="${cx + 8}" y2="${cy}" stroke="${PIVOT_MARK}" stroke-width="2"/>` +
+    `<line x1="${cx}" y1="${cy - 8}" x2="${cx}" y2="${cy + 8}" stroke="${PIVOT_MARK}" stroke-width="2"/>` +
+    `</svg>`;
 
   return {
     id,
     slot,
-    image: canvas.toDataURL("image/png"),
+    image: `data:image/svg+xml,${encodeURIComponent(svg)}`,
     pivot: { x: cx, y: cy },
     size: { width, height },
     tintable: false,
@@ -89,7 +80,7 @@ const SLOT_VARIANTS = {
 
 let cachedCatalog = null;
 
-/** Genera (una vez, cacheado) el catalogo de piezas de prueba. Solo navegador. */
+/** Genera (una vez, cacheado) el catalogo de piezas de prueba. */
 export function buildTestCatalog() {
   if (cachedCatalog) return cachedCatalog;
   const catalog = [];
