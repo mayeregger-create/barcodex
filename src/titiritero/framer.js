@@ -1,20 +1,22 @@
 // src/titiritero/framer.js
 // (rareza, renderer) -> dibuja encima del personaje ya compuesto. Desacoplado del cuerpo (doc
 // §5.3): no conoce huesos, solo rareza + las posiciones de mundo de las articulaciones visibles
-// (para los remaches). Colores = los MISMOS 4 que ya usa toda la app en .rareza-frame--* (index.css)
-// — no se inventa una paleta nueva, se hereda la que ya es la fuente de verdad (ver chat).
+// (para los remaches). 5 tiers (doc Generador de Cartas §11.4) — mismo vocabulario que
+// cardgen/rarity.js: comun/poco_comun/rara/epica/legendaria.
 const RAREZA_COLOR = {
-  Comun: "#8a8a8a",
-  "Poco comun": "#b08d57",
-  Raro: "#c9ced4",
-  Epico: "#e6c34d",
+  comun: "#8a8a8a",
+  poco_comun: "#b08d57",
+  rara: "#c9ced4",
+  epica: "#e6c34d",
+  legendaria: "#f2d675",
 };
 
 const RAREZA_BORDER_WIDTH = {
-  Comun: 4,
-  "Poco comun": 6,
-  Raro: 8,
-  Epico: 10,
+  comun: 4,
+  poco_comun: 6,
+  rara: 8,
+  epica: 10,
+  legendaria: 12,
 };
 
 // Subconjunto de huesos "articulacion visible" donde va un remache — no todos (las manos/pies no
@@ -28,10 +30,16 @@ const RIVET_BONES = [
   "neck",
 ];
 
-/** Dibuja el marco de la carta + la capa de remaches, en espacio de CANVAS final (no de rig). */
-export function drawFramer(ctx, { card, canvasWidth, canvasHeight, boneWorld }) {
-  const color = RAREZA_COLOR[card.rareza] || RAREZA_COLOR.Comun;
-  const borderWidth = RAREZA_BORDER_WIDTH[card.rareza] || RAREZA_BORDER_WIDTH.Comun;
+/**
+ * Dibuja el marco de la carta + la capa de remaches, en espacio de CANVAS final (no de rig).
+ * `cardRect` es el rectangulo real de la carta (letterboxeada 1200x1680 dentro del canvas — ver
+ * index.js#computeCardRect); si no se pasa, usa el canvas entero (compatibilidad con llamadas
+ * viejas que todavia no reservan margen fuera de la carta).
+ */
+export function drawFramer(ctx, { card, canvasWidth, canvasHeight, boneWorld, cardRect }) {
+  const rect = cardRect || { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+  const color = RAREZA_COLOR[card.rareza] || RAREZA_COLOR.comun;
+  const borderWidth = RAREZA_BORDER_WIDTH[card.rareza] || RAREZA_BORDER_WIDTH.comun;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -54,14 +62,30 @@ export function drawFramer(ctx, { card, canvasWidth, canvasHeight, boneWorld }) 
     ctx.fill();
   }
 
-  // Marco de la carta entera.
-  ctx.lineWidth = borderWidth;
-  ctx.strokeStyle = color;
-  ctx.strokeRect(borderWidth / 2, borderWidth / 2, canvasWidth - borderWidth, canvasHeight - borderWidth);
+  // Legendaria "desborda el marco" (doc §11.4/§13): un resplandor suave por fuera del borde real,
+  // en vez de un marco mas — es la unica rareza cuyo marco no queda contenido en su propio rect.
+  if (card.rareza === "legendaria") {
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = borderWidth;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(rect.x + borderWidth / 2, rect.y + borderWidth / 2, rect.width - borderWidth, rect.height - borderWidth);
+    ctx.restore();
+  } else {
+    ctx.lineWidth = borderWidth;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(rect.x + borderWidth / 2, rect.y + borderWidth / 2, rect.width - borderWidth, rect.height - borderWidth);
+  }
 
-  if (card.rareza === "Epico") {
+  if (card.rareza === "epica" || card.rareza === "legendaria") {
     ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(255,255,255,0.5)";
-    ctx.strokeRect(borderWidth + 4, borderWidth + 4, canvasWidth - (borderWidth + 4) * 2, canvasHeight - (borderWidth + 4) * 2);
+    ctx.strokeRect(
+      rect.x + borderWidth + 4,
+      rect.y + borderWidth + 4,
+      rect.width - (borderWidth + 4) * 2,
+      rect.height - (borderWidth + 4) * 2
+    );
   }
 }

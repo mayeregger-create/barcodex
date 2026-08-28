@@ -19,6 +19,7 @@ import PartyInviteScreen from "./components/PartyInviteScreen.jsx";
 import ModeSelectScreen from "./components/ModeSelectScreen.jsx";
 import TftBoardScreen from "./components/TftBoardScreen.jsx";
 import TftCombatScreen from "./components/TftCombatScreen.jsx";
+import CardGenPreview from "./components/CardGenPreview.jsx";
 
 const TEAM_SIZE = 3;
 
@@ -35,7 +36,7 @@ function resolveScan(digits12) {
 
 // Pantallas donde la barra inferior queda oculta: son tomas de pantalla completa
 // (titulo, revelación de escaneo, combate en curso), no "bases" entre las que navegar.
-const NAV_HIDDEN_ON = ["title", "result", "combat", "tftCombat"];
+const NAV_HIDDEN_ON = ["title", "result", "combat", "tftCombat", "cardgenPreview"];
 
 export default function App() {
   // "title" | "scan" | "result" | "codex" | "team" | "combat" | "modeSelect" | "tftBoard" | "tftCombat"
@@ -111,6 +112,9 @@ export default function App() {
     setScreen("combat");
   };
 
+  const goLab = () => setScreen("cardgenPreview");
+  const goTitle = () => setScreen("title");
+
   const goModeSelect = () => setScreen("modeSelect");
   const goTftBoard = () => setScreen("tftBoard");
   const startTft = (placements) => {
@@ -173,8 +177,10 @@ export default function App() {
         </header>
       )}
 
-      <div className={`app-content${["title", "scan"].includes(screen) ? " app-content--bleed" : ""}`}>
-        {screen === "title" && <TitleScreen onStart={goScan} onWake={handleTitleWake} />}
+      <div className={`app-content${["title", "scan", "cardgenPreview"].includes(screen) ? " app-content--bleed" : ""}`}>
+        {screen === "title" && <TitleScreen onStart={goScan} onWake={handleTitleWake} onLab={goLab} />}
+
+        {screen === "cardgenPreview" && <CardGenPreview onBack={goTitle} />}
 
         {screen === "scan" && <ScanScreen onScan={handleScan} />}
 

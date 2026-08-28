@@ -15,7 +15,7 @@
 const OUTLINE = "#1a1610";
 const PIVOT_MARK = "#ffffff";
 
-function makeRectPiece({ id, slot, color, width, height, rarityMin = "Comun", tags = [], excludes = [] }) {
+function makeRectPiece({ id, slot, color, width, height, rarityMin = "comun", tags = [], excludes = [] }) {
   const cx = width / 2;
   const cy = height / 2;
   const svg =
@@ -27,7 +27,9 @@ function makeRectPiece({ id, slot, color, width, height, rarityMin = "Comun", ta
 
   return {
     id,
-    slot,
+    // Prefijo de topologia (doc §14): el slot que matchea contra SLOT_REGISTRY siempre es
+    // "humanoid.<slot>" — el id de la pieza en si no lo necesita, es solo una clave de catalogo.
+    slot: `humanoid.${slot}`,
     image: `data:image/svg+xml,${encodeURIComponent(svg)}`,
     pivot: { x: cx, y: cy },
     size: { width, height },
@@ -51,7 +53,7 @@ const SLOT_VARIANTS = {
     { suffix: "a", color: "#5b4b8a", w: 210, h: 280 },
     { suffix: "b", color: "#1f7a6c", w: 210, h: 280 },
   ],
-  torso_armor: [{ suffix: "a", color: "#9aa4ad", w: 230, h: 260, rarityMin: "Raro" }],
+  torso_armor: [{ suffix: "a", color: "#9aa4ad", w: 230, h: 260, rarityMin: "rara" }],
   hips: [
     { suffix: "a", color: "#4a3a5c", w: 170, h: 110 },
     { suffix: "b", color: "#3d2f4a", w: 170, h: 110 },
@@ -63,7 +65,7 @@ const SLOT_VARIANTS = {
   upperarm_near: [{ suffix: "a", color: "#d9642f", w: 80, h: 180 }],
   forearm_near: [{ suffix: "a", color: "#c95a2a", w: 70, h: 170 }],
   hand_near: [{ suffix: "a", color: "#e8b98c", w: 60, h: 70 }],
-  weapon_near: [{ suffix: "a", color: "#c9ced4", w: 40, h: 220, rarityMin: "Poco comun" }],
+  weapon_near: [{ suffix: "a", color: "#c9ced4", w: 40, h: 220, rarityMin: "poco_comun" }],
   thigh_far: [
     { suffix: "a", color: "#33294a", w: 90, h: 260 },
     { suffix: "b", color: "#2a2140", w: 90, h: 260 },

@@ -9,24 +9,26 @@ import { SLOT_REGISTRY } from "./data/slotRegistry.js";
 
 // Catalogo sintetico minimo: no hace falta imagen real para probar determinismo, el resolver ni
 // siquiera las toca (doc §5.1: "no toca imagenes"). 2+ variantes en los slots que nos interesa ver
-// variar, para que el PRNG tenga algo entre lo que elegir.
+// variar, para que el PRNG tenga algo entre lo que elegir. Slots con prefijo "humanoid." (doc
+// Generador de Cartas §14) para matchear contra SLOT_REGISTRY tal como esta hoy; rareza en el
+// vocabulario de 5 tiers (comun/poco_comun/rara/epica/legendaria) que usa Titiritero por dentro.
 const CATALOG = [
-  { id: "torso_a", slot: "torso", rarityMin: "Comun" },
-  { id: "torso_b", slot: "torso", rarityMin: "Comun" },
-  { id: "torso_c", slot: "torso", rarityMin: "Comun" },
-  { id: "head_a", slot: "head", rarityMin: "Comun" },
-  { id: "head_b", slot: "head", rarityMin: "Comun" },
-  { id: "hips_a", slot: "hips", rarityMin: "Comun" },
-  { id: "hips_b", slot: "hips", rarityMin: "Comun" },
-  { id: "torso_armor_a", slot: "torso_armor", rarityMin: "Raro" },
+  { id: "torso_a", slot: "humanoid.torso", rarityMin: "comun" },
+  { id: "torso_b", slot: "humanoid.torso", rarityMin: "comun" },
+  { id: "torso_c", slot: "humanoid.torso", rarityMin: "comun" },
+  { id: "head_a", slot: "humanoid.head", rarityMin: "comun" },
+  { id: "head_b", slot: "humanoid.head", rarityMin: "comun" },
+  { id: "hips_a", slot: "humanoid.hips", rarityMin: "comun" },
+  { id: "hips_b", slot: "humanoid.hips", rarityMin: "comun" },
+  { id: "torso_armor_a", slot: "humanoid.torso_armor", rarityMin: "rara" },
 ];
 
 function pieceMapToObject(pieceMap) {
   return Object.fromEntries([...pieceMap.entries()].sort());
 }
 
-function makeCard(id, rareza = "Comun") {
-  return { id, rareza, clase: "Guerrero", continente: "America", sexo: "Masculino", overrides: {} };
+function makeCard(id, rareza = "comun") {
+  return { id, rareza, clase: "warrior", stance: "front", overrides: {} };
 }
 
 test("misma carta produce siempre el mismo resultado (byte a byte, via JSON)", () => {
@@ -44,18 +46,18 @@ test("cartas con distinto id no siempre producen el mismo resultado", () => {
 });
 
 test("overrides fuerza una pieza especifica, saltando la seleccion automatica", () => {
-  const card = { ...makeCard("2698831973624"), overrides: { torso: "torso_b" } };
+  const card = { ...makeCard("2698831973624"), overrides: { "humanoid.torso": "torso_b" } };
   const { pieceMap } = resolveCard(card, CATALOG, SLOT_REGISTRY);
-  assert.equal(pieceMap.get("torso"), "torso_b");
+  assert.equal(pieceMap.get("humanoid.torso"), "torso_b");
 });
 
-test("rarityMin filtra piezas: una carta Comun no puede sacar una pieza Raro", () => {
-  const card = makeCard("2698831973624", "Comun");
+test("rarityMin filtra piezas: una carta comun no puede sacar una pieza rara", () => {
+  const card = makeCard("2698831973624", "comun");
   const { pieceMap } = resolveCard(card, CATALOG, SLOT_REGISTRY);
   // torso_armor es opcional (no esta en SLOT_REGISTRY como required), asi que puede quedar sin
   // asignar sin generar warning de slot obligatorio — lo que importa es que NUNCA elija la pieza
-  // Raro para una carta Comun.
-  assert.notEqual(pieceMap.get("torso_armor"), "torso_armor_a");
+  // rara para una carta comun.
+  assert.notEqual(pieceMap.get("humanoid.torso_armor"), "torso_armor_a");
 });
 
 test("slot obligatorio sin candidatos genera warning, no falla silenciosamente", () => {

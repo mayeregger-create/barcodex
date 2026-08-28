@@ -3,7 +3,10 @@
 // misma card.id, mismo resultado siempre — ver prng.js, nunca Math.random() aca.
 import { seededRng } from "./prng.js";
 
-export const RARITY_ORDER = ["Comun", "Poco comun", "Raro", "Epico"];
+// 5 tiers (doc Generador de Cartas §11) — mismo vocabulario que usa cardgen/rarity.js. El flujo
+// viejo (personajes de character.js, 4 tiers en espanol con mayuscula) se adapta a esto en el
+// borde (ver cardFromCharacter en index.js), Titiritero por dentro solo conoce este vocabulario.
+export const RARITY_ORDER = ["comun", "poco_comun", "rara", "epica", "legendaria"];
 
 function rarityAtLeast(cardRareza, minRareza) {
   const cardIdx = RARITY_ORDER.indexOf(cardRareza);
@@ -58,7 +61,7 @@ export function resolveCard(card, catalog, slotRegistry) {
 
   for (const slotDef of bodySlots) {
     const candidates = catalog.filter(
-      (p) => p.slot === slotDef.id && rarityAtLeast(card.rareza, p.rarityMin || "Comun") && !isExcluded(p, chosen)
+      (p) => p.slot === slotDef.id && rarityAtLeast(card.rareza, p.rarityMin || "comun") && !isExcluded(p, chosen)
     );
 
     if (candidates.length === 0) {
