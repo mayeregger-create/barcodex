@@ -2976,3 +2976,308 @@ button, input {
 .cardgen-preview-back {
   flex: none;
 }
+
+/* --- BoardPrototype.jsx: grilla cenital + fichas de Titiritero con zonas rotas colgando --- */
+.board-proto {
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--ink);
+  overflow: hidden;
+}
+
+.board-proto-nucleo {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-pixel);
+  font-size: 0.58rem;
+  color: var(--paper);
+  padding: 4px 2px;
+}
+
+.board-grid-row {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.board-divider {
+  flex: none;
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.6rem;
+  color: #f2d675;
+  letter-spacing: 0.15em;
+  padding: 2px 0;
+}
+
+.board-tile {
+  position: relative;
+  flex: 1;
+  max-width: 110px;
+  aspect-ratio: 1 / 1;
+  background: #0d0910;
+  border: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  /* .board-tile ahora es un <button> (la mano/inspeccion necesita que sea tocable) — resetear el
+   * chrome nativo para que siga leyendose igual que antes. */
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.board-tile:disabled {
+  cursor: default;
+}
+
+/* Capa transparente (ver chat): resaltado de a donde se puede desplegar / a que le apunta la
+ * seleccion actual — mano o unidad ya en el tablero. */
+.board-tile--legal {
+  border-color: #3fae5c;
+  box-shadow: 0 0 0 2px rgba(63, 174, 92, 0.5);
+}
+
+.board-tile--illegal {
+  opacity: 0.35;
+}
+
+.board-tile--threatened {
+  border-color: #f2d675;
+  box-shadow: 0 0 0 2px rgba(242, 214, 117, 0.55);
+}
+
+.board-proto-nucleo--alert span:first-child,
+.board-proto-nucleo--alert span:last-child {
+  color: #f2d675;
+  animation: card-hero-hint-pulse 1s ease-in-out infinite;
+}
+
+.board-tile--empty {
+  border-style: dashed;
+  opacity: 0.4;
+}
+
+.board-tile--down {
+  opacity: 0.4;
+}
+
+.board-tile-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.board-tile-name {
+  position: relative;
+  z-index: 1;
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: #fff8ec;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+  padding: 0 2px;
+}
+
+.board-tile-hp {
+  position: relative;
+  z-index: 1;
+  width: 90%;
+  height: 4px;
+  margin-bottom: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--line);
+}
+
+.board-tile-hp-fill {
+  height: 100%;
+  background: #d43b3b;
+  transition: width 0.3s ease;
+}
+
+.board-tile-tag {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 2;
+  font-size: 0.45rem;
+  font-weight: 700;
+  padding: 1px 3px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff8ec;
+}
+
+.board-tile-tag--fallen {
+  color: #d43b3b;
+}
+
+.board-tile-tag--collapsed {
+  color: #f2d675;
+}
+
+.board-proto-log {
+  flex: 1;
+  min-height: 0;
+  background: var(--paper);
+  border: 2px solid var(--line);
+  padding: 6px 8px;
+  font-size: 0.58rem;
+  color: var(--text-body);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.board-proto-log-line--winner {
+  font-weight: 700;
+  color: var(--hue-dark);
+}
+
+.board-proto-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.board-proto-actions .scan-again {
+  flex: 1;
+}
+
+.board-proto-back {
+  flex: none;
+}
+
+/* --- Seleccion activa (mano o unidad inspeccionada) --- */
+.board-proto-selection {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--paper);
+  border: 2px solid var(--line);
+  padding: 5px 8px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--text-body);
+}
+
+.board-proto-selection-btn {
+  flex: none;
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  background: var(--hue-mid);
+  color: var(--paper);
+  border: 2px solid var(--line);
+  cursor: pointer;
+}
+
+/* --- Mano (fase de despliegue) --- */
+.board-hand {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.board-hand-empty {
+  font-size: 0.6rem;
+  color: rgba(255, 248, 236, 0.5);
+  padding: 8px;
+}
+
+.board-hand-card {
+  flex: none;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  background: var(--paper);
+  border: 2px solid var(--line);
+  cursor: pointer;
+  font: inherit;
+}
+
+.board-hand-card--selected {
+  border-color: #f2d675;
+  box-shadow: 0 0 0 2px rgba(242, 214, 117, 0.55);
+}
+
+.board-hand-card-cost {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 0.65rem;
+  color: var(--hue-dark);
+}
+
+.board-hand-card-name {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.board-hand-card-type {
+  font-size: 0.48rem;
+  color: var(--hue-dark);
+  opacity: 0.8;
+}
+
+/* --- Ficha de carta (CardSheet) — reusa .sheet-backdrop/.sheet ya existentes --- */
+.card-sheet-body {
+  display: flex;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.card-sheet-canvas {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  background: #0d0910;
+  border: 2px solid var(--line);
+}
+
+.card-sheet-stats {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.6rem;
+  color: var(--text-body);
+}
+
+.card-sheet-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.card-sheet-zone--broken {
+  color: #a32d2d;
+  text-decoration: line-through;
+}
+
+.card-sheet-trait {
+  font-weight: 700;
+}

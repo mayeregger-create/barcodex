@@ -10,7 +10,7 @@
 // despues de ese toque se revela el logo/tagline/boton "Jugar" real.
 import { useState } from "react";
 
-export default function TitleScreen({ onStart, onWake, onLab }) {
+export default function TitleScreen({ onStart, onWake, onLab, onBoard }) {
   const [awake, setAwake] = useState(false);
 
   const handleWake = () => {
@@ -38,6 +38,11 @@ export default function TitleScreen({ onStart, onWake, onLab }) {
           {onLab && (
             <button type="button" className="title-lab-link" onClick={onLab}>
               🃏 Prototipo del generador de cartas (beta)
+            </button>
+          )}
+          {onBoard && (
+            <button type="button" className="title-lab-link" onClick={onBoard}>
+              ⚔️ Prototipo del tablero (beta)
             </button>
           )}
         </div>

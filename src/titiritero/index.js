@@ -15,6 +15,7 @@ import { poseForStance, stanceFromStation } from "./data/poses.js";
 import { buildTestCatalog } from "./data/testPieces.js";
 import { CONTINENT_COLORS } from "../core/pixelArt/palette.js";
 import { LINEAGE_COLORS } from "./data/lineageColors.js";
+import { dangleBonesForBrokenZones } from "./gameZones.js";
 
 // Proporcion real de la carta (doc Generador de Cartas §13): 1200x1680, 5:7 — coincide EXACTO con
 // la proporcion del propio rig (1000x1400), asi que al escalar y centrar dentro del rect de carta
@@ -226,4 +227,81 @@ export function mountTitiritoreCard(canvas, character) {
 /** @param {HTMLCanvasElement} canvas @param {object} generated - de cardgen/card.js#generateCard(). */
 export function mountTitiritoreCardFromGenerated(canvas, generated) {
   return mountCore(canvas, cardFromGeneratedCard(generated));
+}
+
+/**
+ * Version liviana para una ficha chica de tablero (sin marco, sin bandas de texto, sin wash de
+ * Linaje) — solo el personaje, mecido, con las zonas rotas colgando de verdad (ver gameZones.js:
+ * "no pierden puntos de vida, pierden partes", el corazon visual del sistema nuevo).
+ * `getBrokenZones()` se lee en CADA frame (no una vez al montar) para que el tablero pueda
+ * actualizar el dano en vivo sin tener que desmontar y volver a montar el canvas.
+ * @param {HTMLCanvasElement} canvas
+ * @param {object} generated - de cardgen/card.js#generateCard().
+ * @param {() => Iterable<string>} [getBrokenZones] - nombres de zona rotos ahora mismo.
+ * @returns {() => void} cleanup
+ */
+export function mountBoardToken(canvas, generated, getBrokenZones = () => []) {
+  const card = cardFromGeneratedCard(generated);
+  const ctx = canvas.getContext("2d");
+  const renderer = createCanvas2DRenderer(ctx);
+  const catalog = buildTestCatalog();
+  const { pieceMap, warnings } = resolveCard(card, catalog, SLOT_REGISTRY);
+  if (warnings.length) console.warn("[titiritero]", card.id, warnings);
+
+  const pose = poseForStance(card.stance);
+
+  let raf = null;
+  let cancelled = false;
+  const start = performance.now();
+
+  preloadCatalog(catalog).then(() => {
+    if (cancelled) return;
+
+    function frame(now) {
+      try {
+        const t = (now - start) / 1000;
+        const w = canvas.width;
+        const h = canvas.height;
+        const margin = w * 0.08;
+        const scale = Math.min((w - margin * 2) / HUMANOID_RIG.canvas.width, (h - margin * 2) / HUMANOID_RIG.canvas.height);
+        const baseMatrix = fromTransform({
+          x: (w - HUMANOID_RIG.canvas.width * scale) / 2,
+          y: (h - HUMANOID_RIG.canvas.height * scale) / 2,
+          rotation: 0,
+          scaleX: scale,
+          scaleY: scale,
+        });
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+
+        const lightVector = { x: Math.sin(t * 0.35) * 0.5, y: -1 };
+        const brokenBones = dangleBonesForBrokenZones(getBrokenZones());
+
+        composeCard({
+          pieceMap,
+          rig: HUMANOID_RIG,
+          pose,
+          catalog,
+          slotRegistry: SLOT_REGISTRY,
+          renderer,
+          t,
+          lightVector,
+          baseMatrix,
+          brokenBones,
+        });
+      } catch (err) {
+        console.error("[titiritero] fallo dibujando una ficha de tablero", err);
+      }
+
+      if (!cancelled) raf = requestAnimationFrame(frame);
+    }
+
+    raf = requestAnimationFrame(frame);
+  });
+
+  return () => {
+    cancelled = true;
+    if (raf) cancelAnimationFrame(raf);
+  };
 }
