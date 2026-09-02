@@ -84,8 +84,14 @@ function hitZone(defender, zoneName, activeType, fuerza) {
  * Resuelve el turno de `attacker`. Devuelve una descripcion del evento para el log del
  * simulador — nunca tira si no hay objetivo, simplemente no hace nada ("turno perdido", un dato
  * en si mismo para el balance).
+ * @param {boolean} [nucleoShielded] - default false: si true, un golpe que hubiera llegado al
+ *   Nucleo (por linea de tiro o tablero vacio) no le hace nada — se pierde entero, kind
+ *   "nucleo_shielded". Pensado para un escudo temporal de X rondas al arrancar la partida (ver
+ *   chat), como alternativa a graceRounds (que en vez de bloquear el golpe, aflojaba la regla de
+ *   exposicion). Magic paga igual su costo de cabeza: el escudo protege al Nucleo, no vuelve
+ *   gratis el hechizo.
  */
-export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true) {
+export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false) {
   if (attacker.activeType === "magic" && attacker.zones.head.integrity <= 0) {
     return { kind: "no_magic_head_broken" };
   }
@@ -100,6 +106,7 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
   }
 
   if (target.nucleo) {
+    if (nucleoShielded) return { kind: "nucleo_shielded" };
     nucleo.hp = Math.max(0, nucleo.hp - fuerza);
     return { kind: "hit_nucleo", dmg: fuerza, nucleoHp: nucleo.hp };
   }

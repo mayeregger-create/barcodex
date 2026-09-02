@@ -88,3 +88,14 @@ export function backfillFromReserve(board, reserve) {
     board[p] = makeBattler(card);
   }
 }
+
+/** Coloca una carta recien comprometida (Regente al arrancar, o una carta que la economia de
+ * Impulso acaba de pagar — ver economy.js): directo al tablero si hay un casillero libre legal
+ * para su Estacion, si no a la Reserva, donde backfillFromReserve la levanta gratis apenas se abra
+ * un lugar. Muta `board` y `reserve`. */
+export function placeCard(card, board, reserve) {
+  const legal = DAMAGE_TYPES[card.combat.damageTypeActive].station;
+  const slot = legal.find((p) => !board[p]);
+  if (slot) board[slot] = makeBattler(card);
+  else reserve.push(card);
+}

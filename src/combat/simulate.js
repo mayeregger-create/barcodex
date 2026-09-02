@@ -7,7 +7,7 @@
 import { autoDeploy, aliveBattlers, backfillFromReserve, NUCLEO_BASE, POSITIONS } from "./board.js";
 import { resolveAttack, checkCollapse } from "./resolve.js";
 
-function buildTurnOrder(boardA, boardB, priorityFirst) {
+export function buildTurnOrder(boardA, boardB, priorityFirst) {
   const tagged = [
     ...aliveBattlers(boardA).map((b) => ({ battler: b, side: "A" })),
     ...aliveBattlers(boardB).map((b) => ({ battler: b, side: "B" })),

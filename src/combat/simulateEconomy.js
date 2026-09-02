@@ -1,0 +1,152 @@
+// src/combat/simulateEconomy.js
+// Igual que simulate.js (mismo motor de combate, resolveAttack/checkCollapse sin tocar) pero con
+// Impulso/Escombros/Regente reales en vez de desplegar el mazo entero de arranque — pasada
+// separada a proposito, para poder seguir comparando contra el baseline sin economia si hace
+// falta. Ver economy.js para las decisiones de diseno de cada recurso.
+import { placeCard, aliveBattlers, backfillFromReserve, NUCLEO_BASE, POSITIONS } from "./board.js";
+import { resolveAttack, checkCollapse } from "./resolve.js";
+import { buildTurnOrder } from "./simulate.js";
+import {
+  gainImpulso,
+  escombrosFromLoss,
+  pickRegente,
+  nucleoBonusFromRegente,
+  commitFromHand,
+  IMPULSO_START,
+} from "./economy.js";
+
+function clearFallenSlots(board, graveyard, escombros, sideKey) {
+  for (const p of POSITIONS) {
+    const b = board[p];
+    if (b && (b.fallen || b.collapsed)) {
+      graveyard.push(b);
+      escombros[sideKey] += escombrosFromLoss(b.card.cost);
+      board[p] = null;
+    }
+  }
+}
+
+/**
+ * @param {object[]} deckA - mazo completo del lado A (cartas generadas, incluye al futuro Regente).
+ * @param {object[]} deckB - idem lado B.
+ * @param {{ maxRounds?: number, graceRounds?: number, nucleoShieldRounds?: number }} [opts]
+ *   - nucleoShieldRounds (default 3, ADOPTADO): mientras `round <= nucleoShieldRounds`, CUALQUIER
+ *     golpe que hubiera llegado al Nucleo (por la regla que este activa, linea de tiro incluida)
+ *     simplemente no le hace nada — el Nucleo es inatacable esas rondas. Resuelve que el tablero
+ *     disperso de la economia (solo el Regente en ronda 1) reabria la exposicion de Nucleo que
+ *     linea de tiro ya habia resuelto: sin esto, las partidas con economia terminaban MAS RAPIDO
+ *     que el baseline (6.5 vs 8.2 rondas) porque varios carriles quedaban abiertos a la vez desde
+ *     el arranque. Verificado en el chat: con el escudo, la duracion vuelve a 8.0-8.1 rondas y 0
+ *     golpes reales al Nucleo en las rondas protegidas (garantia dura). Magic paga igual su costo
+ *     de cabeza durante el escudo — protege al Nucleo, no vuelve gratis el hechizo.
+ *   - graceRounds (default 0, NO adoptado): alternativa descartada — en vez de bloquear el golpe,
+ *     aflojaba la regla de exposicion al §2.2 original (tablero 100% vacio) por unas rondas; daba
+ *     un resultado agregado similar pero sin garantia dura (126 golpes reales se colaban igual en
+ *     2000 partidas de prueba). Se deja en el codigo solo por si hace falta comparar de nuevo.
+ */
+export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRounds = 0, nucleoShieldRounds = 3 } = {}) {
+  const { regente: regenteA, hand: handAInit } = pickRegente(deckA);
+  const { regente: regenteB, hand: handBInit } = pickRegente(deckB);
+
+  const boardA = { 1: null, 2: null, 3: null };
+  const boardB = { 1: null, 2: null, 3: null };
+  const reserveA = [];
+  const reserveB = [];
+  let handA = [...handAInit];
+  let handB = [...handBInit];
+
+  placeCard(regenteA, boardA, reserveA);
+  placeCard(regenteB, boardB, reserveB);
+
+  const graveyardA = [];
+  const graveyardB = [];
+  const nucleoA = { hp: NUCLEO_BASE + nucleoBonusFromRegente(regenteA) };
+  const nucleoB = { hp: NUCLEO_BASE + nucleoBonusFromRegente(regenteB) };
+
+  let impulsoA = IMPULSO_START;
+  let impulsoB = IMPULSO_START;
+  const escombros = { A: 0, B: 0 };
+
+  const stats = {
+    impulsoSpent: { A: 0, B: 0 },
+    impulsoLeftoverSum: { A: 0, B: 0 }, // para el promedio de cuanto Impulso queda sin gastar cada ronda ("eficiencia de curva")
+    secondUnitRound: { A: null, B: null }, // primera ronda en que se comprometio una carta de mano (el Regente no cuenta, ya esta en ronda 1)
+    boardFullRound: { A: null, B: null },
+    handEmptyRound: { A: null, B: null },
+    torsoBreaks: 0,
+    collapses: 0,
+  };
+
+  const log = [];
+  let round = 0;
+  let winner = null;
+
+  while (round < maxRounds) {
+    round += 1;
+
+    // Fase 0/1 — economia + refuerzos
+    impulsoA = gainImpulso(impulsoA);
+    impulsoB = gainImpulso(impulsoB);
+
+    const resA = commitFromHand(handA, impulsoA);
+    handA = resA.hand;
+    impulsoA = resA.impulsoLeft;
+    stats.impulsoSpent.A += resA.impulsoSpent;
+    stats.impulsoLeftoverSum.A += impulsoA;
+    for (const card of resA.committed) placeCard(card, boardA, reserveA);
+    if (stats.secondUnitRound.A === null && resA.committed.length > 0) stats.secondUnitRound.A = round;
+    if (stats.handEmptyRound.A === null && handA.length === 0) stats.handEmptyRound.A = round;
+
+    const resB = commitFromHand(handB, impulsoB);
+    handB = resB.hand;
+    impulsoB = resB.impulsoLeft;
+    stats.impulsoSpent.B += resB.impulsoSpent;
+    stats.impulsoLeftoverSum.B += impulsoB;
+    for (const card of resB.committed) placeCard(card, boardB, reserveB);
+    if (stats.secondUnitRound.B === null && resB.committed.length > 0) stats.secondUnitRound.B = round;
+    if (stats.handEmptyRound.B === null && handB.length === 0) stats.handEmptyRound.B = round;
+
+    backfillFromReserve(boardA, reserveA);
+    backfillFromReserve(boardB, reserveB);
+
+    if (stats.boardFullRound.A === null && POSITIONS.every((p) => boardA[p])) stats.boardFullRound.A = round;
+    if (stats.boardFullRound.B === null && POSITIONS.every((p) => boardB[p])) stats.boardFullRound.B = round;
+
+    // Fase 2 — orden
+    const priorityFirst = round % 2 === 1 ? "A" : "B";
+    const order = buildTurnOrder(boardA, boardB, priorityFirst);
+
+    // Fase 3/4 — acciones + resolucion (linea de tiro siempre activa, es la regla adoptada)
+    for (const { battler, side } of order) {
+      if (battler.fallen || battler.collapsed) continue;
+      const defBoard = side === "A" ? boardB : boardA;
+      const defNucleo = side === "A" ? nucleoB : nucleoA;
+      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds);
+      log.push({ round, side, card: battler.card.identity.displayName, ...result });
+      if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
+      if (nucleoA.hp <= 0) { winner = "B"; break; }
+      if (nucleoB.hp <= 0) { winner = "A"; break; }
+    }
+    if (winner) break;
+
+    // Fase 5 — bajas (Colapso, despues liberar casilleros y cobrar Escombros)
+    for (const b of aliveBattlers(boardA)) if (checkCollapse(b)) stats.collapses += 1;
+    for (const b of aliveBattlers(boardB)) if (checkCollapse(b)) stats.collapses += 1;
+    clearFallenSlots(boardA, graveyardA, escombros, "A");
+    clearFallenSlots(boardB, graveyardB, escombros, "B");
+  }
+
+  if (!winner) {
+    winner = nucleoA.hp === nucleoB.hp ? "draw" : nucleoA.hp > nucleoB.hp ? "A" : "B";
+  }
+
+  return {
+    winner,
+    rounds: round,
+    nucleoA: nucleoA.hp,
+    nucleoB: nucleoB.hp,
+    escombros,
+    stats,
+    log,
+  };
+}
