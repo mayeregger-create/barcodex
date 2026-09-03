@@ -13,7 +13,9 @@ import {
   nucleoBonusFromRegente,
   commitFromHand,
   IMPULSO_START,
+  NUCLEO_SHIELD_ROUNDS,
 } from "./economy.js";
+import { attemptMagicFallback } from "./magicFallback.js";
 
 function clearFallenSlots(board, graveyard, escombros, sideKey) {
   for (const p of POSITIONS) {
@@ -44,7 +46,7 @@ function clearFallenSlots(board, graveyard, escombros, sideKey) {
  *     un resultado agregado similar pero sin garantia dura (126 golpes reales se colaban igual en
  *     2000 partidas de prueba). Se deja en el codigo solo por si hace falta comparar de nuevo.
  */
-export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRounds = 0, nucleoShieldRounds = 3 } = {}) {
+export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRounds = 0, nucleoShieldRounds = NUCLEO_SHIELD_ROUNDS } = {}) {
   const { regente: regenteA, hand: handAInit } = pickRegente(deckA);
   const { regente: regenteB, hand: handBInit } = pickRegente(deckB);
 
@@ -75,6 +77,7 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     handEmptyRound: { A: null, B: null },
     torsoBreaks: 0,
     collapses: 0,
+    magicFallback: { attempts: 0, ok: 0, failed: 0, byKind: {} }, // uso real de la salida de Magic por Linaje
   };
 
   const log = [];
@@ -121,8 +124,35 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
       if (battler.fallen || battler.collapsed) continue;
       const defBoard = side === "A" ? boardB : boardA;
       const defNucleo = side === "A" ? nucleoB : nucleoA;
-      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds);
-      log.push({ round, side, card: battler.card.identity.displayName, ...result });
+
+      // Cabeza rota + Magic: intenta la salida por Linaje ANTES de resolver el golpe — ver
+      // magicFallback.js. Si falla (recurso no disponible, o Injerto sin aliado adyacente), el
+      // golpe se resuelve igual que antes (resolveAttack corta solo por su cuenta).
+      let magicFallbackActive = false;
+      let fallbackKind = null;
+      if (battler.activeType === "magic" && battler.zones.head.integrity <= 0) {
+        const ownBoard = side === "A" ? boardA : boardB;
+        const applied = attemptMagicFallback(battler, side, {
+          impulsoAvailable: side === "A" ? impulsoA : impulsoB,
+          escombrosAvailable: escombros[side],
+          ownBoard,
+        });
+        stats.magicFallback.attempts += 1;
+        if (applied.ok) {
+          stats.magicFallback.ok += 1;
+          stats.magicFallback.byKind[applied.kind] = (stats.magicFallback.byKind[applied.kind] || 0) + 1;
+          if (applied.impulsoSpent) { if (side === "A") impulsoA -= applied.impulsoSpent; else impulsoB -= applied.impulsoSpent; }
+          if (applied.escombrosSpent) escombros[side] -= applied.escombrosSpent;
+          if (applied.kind === "cantera_torso" && applied.lethal) battler.strength += 2; // el ultimo hechizo pega mas fuerte
+          magicFallbackActive = true;
+          fallbackKind = applied.kind;
+        } else {
+          stats.magicFallback.failed += 1;
+        }
+      }
+
+      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds, magicFallbackActive);
+      log.push({ round, side, card: battler.card.identity.displayName, magicFallbackKind: fallbackKind, ...result });
       if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
       if (nucleoA.hp <= 0) { winner = "B"; break; }
       if (nucleoB.hp <= 0) { winner = "A"; break; }

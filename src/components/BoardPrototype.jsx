@@ -4,17 +4,30 @@
 // queda colgando del remache en vivo (gameZones.js), no una barra de vida abstracta. Motor de
 // combate REAL (src/combat/), avanzado a mano un golpe a la vez para poder mirarlo.
 //
-// Dos fases: "deploy" (tu mano, tocas una carta y el tablero te muestra donde la podes ubicar +
-// que le va a llegar del lado rival — la "capa transparente" del chat) y "battle" (igual que antes,
-// golpe a golpe). El rival se sigue autodesplegando (autoDeploy) — la interaccion es solo tuya.
+// Ronda continua, no "arma todo tu mazo y despues mira": cada ronda tiene una ventana de
+// despliegue (fase "deploy" — tu Impulso decide cuanto podes comprometer de la mano) seguida de
+// la resolucion golpe a golpe (fase "battle"), y al vaciarse la cola se abre la ventana de la
+// siguiente ronda sola. El Regente arranca ya desplegado gratis (economy.js#pickRegente), el
+// rival se autogestiona su propia mano con la misma heuristica greedy del simulador headless.
 import { useEffect, useRef, useState } from "react";
 import { generateCard } from "../cardgen/card.js";
-import { autoDeploy, makeBattler, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
+import { makeBattler, placeCard, backfillFromReserve, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
 import { resolveAttack, checkCollapse } from "../combat/resolve.js";
+import { attemptMagicFallback } from "../combat/magicFallback.js";
+import {
+  gainImpulso,
+  escombrosFromLoss,
+  pickRegente,
+  nucleoBonusFromRegente,
+  commitFromHand,
+  IMPULSO_START,
+  IMPULSO_CAP,
+  NUCLEO_SHIELD_ROUNDS,
+} from "../combat/economy.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { mountBoardToken } from "../titiritero/index.js";
 
-const HAND_SIZE = 5;
+const DECK_SIZE = 5; // 1 se vuelve Regente (gratis, ronda 1) + 4 quedan en la mano
 const TYPE_LABEL = { pierce: "Pierce", cut: "Cut", blunt: "Blunt", magic: "Magic" };
 const STATION_SYMBOL = { 1: "1", 2: "2", 3: "3" };
 
@@ -24,20 +37,58 @@ function randomCode13() {
   return d;
 }
 
+/** Arranca la siguiente ronda sobre un estado ya existente: sube el Impulso de ambos lados, deja
+ * que el rival comprometa lo que le alcance de su mano (misma heuristica que economy.js#commitFromHand),
+ * rellena huecos desde la Reserva de los dos bandos (gratis) y abre la ventana de despliegue del
+ * jugador. Muta `state` en el lugar — no devuelve nada. */
+function beginRound(state) {
+  state.round += 1;
+  state.impulsoA = gainImpulso(state.impulsoA);
+  state.impulsoB = gainImpulso(state.impulsoB);
+
+  const resB = commitFromHand(state.handB, state.impulsoB);
+  state.handB = resB.hand;
+  state.impulsoB = resB.impulsoLeft;
+  for (const card of resB.committed) placeCard(card, state.boardB, state.reserveB);
+
+  backfillFromReserve(state.boardA, state.reserveA);
+  backfillFromReserve(state.boardB, state.reserveB);
+
+  state.phase = "deploy";
+  state.queue = [];
+}
+
 function freshMatch() {
-  const hand = Array.from({ length: HAND_SIZE }, () => generateCard(randomCode13()));
-  const rivalCards = Array.from({ length: 3 }, () => generateCard(randomCode13()));
-  const { board: boardB } = autoDeploy(rivalCards);
-  return {
+  const deckA = Array.from({ length: DECK_SIZE }, () => generateCard(randomCode13()));
+  const deckB = Array.from({ length: DECK_SIZE }, () => generateCard(randomCode13()));
+  const { regente: regenteA, hand: handA } = pickRegente(deckA);
+  const { regente: regenteB, hand: handB } = pickRegente(deckB);
+
+  const boardA = { 1: null, 2: null, 3: null };
+  const boardB = { 1: null, 2: null, 3: null };
+  const reserveA = [];
+  const reserveB = [];
+  placeCard(regenteA, boardA, reserveA);
+  placeCard(regenteB, boardB, reserveB);
+
+  const state = {
     phase: "deploy",
-    hand,
-    boardA: { 1: null, 2: null, 3: null },
-    boardB,
-    nucleoA: { hp: NUCLEO_BASE },
-    nucleoB: { hp: NUCLEO_BASE },
     round: 0,
+    handA,
+    handB,
+    boardA,
+    boardB,
+    reserveA,
+    reserveB,
+    nucleoA: { hp: NUCLEO_BASE + nucleoBonusFromRegente(regenteA) },
+    nucleoB: { hp: NUCLEO_BASE + nucleoBonusFromRegente(regenteB) },
+    impulsoA: IMPULSO_START,
+    impulsoB: IMPULSO_START,
+    escombros: { A: 0, B: 0 },
     queue: [],
   };
+  beginRound(state);
+  return state;
 }
 
 function buildQueue(state) {
@@ -157,11 +208,12 @@ export default function BoardPrototype({ onBack }) {
   const [tick, setTick] = useState(0);
   const [log, setLog] = useState([]);
   const [winner, setWinner] = useState(null);
-  const [selectedHand, setSelectedHand] = useState(null); // indice en hand
+  const [selectedHand, setSelectedHand] = useState(null); // indice en handA
   const [inspecting, setInspecting] = useState(null); // { side, position } — para el ghost + ficha
   const [sheetCard, setSheetCard] = useState(null);
 
   const rerender = () => setTick((n) => n + 1);
+  const pushLog = (line) => setLog((prev) => [...prev.slice(-7), line]);
 
   const reroll = () => {
     stateRef.current = freshMatch();
@@ -175,28 +227,64 @@ export default function BoardPrototype({ onBack }) {
   const deployAt = (position) => {
     const s = stateRef.current;
     if (s.phase !== "deploy" || selectedHand === null || s.boardA[position]) return;
-    const card = s.hand[selectedHand];
+    const card = s.handA[selectedHand];
     if (!DAMAGE_TYPES[card.combat.damageTypeActive].station.includes(position)) return; // no legal aca
+    if (card.cost > s.impulsoA) return; // no alcanza el Impulso de esta ronda
     s.boardA[position] = makeBattler(card);
-    s.hand = s.hand.filter((_, i) => i !== selectedHand);
+    s.impulsoA -= card.cost;
+    s.handA = s.handA.filter((_, i) => i !== selectedHand);
     setSelectedHand(null);
     rerender();
   };
 
-  const startBattle = () => {
-    stateRef.current.phase = "battle";
+  /** Cuando la carta seleccionada es legal pero las posiciones de su Estacion ya estan ocupadas —
+   * se compromete igual (paga Impulso) y espera en Reserva a que se abra un lugar, gratis, en una
+   * ronda futura (mismo backfillFromReserve que usa el rival). */
+  const commitToReserve = () => {
+    const s = stateRef.current;
+    if (s.phase !== "deploy" || selectedHand === null) return;
+    const card = s.handA[selectedHand];
+    if (card.cost > s.impulsoA) return;
+    s.reserveA.push(card);
+    s.impulsoA -= card.cost;
+    s.handA = s.handA.filter((_, i) => i !== selectedHand);
+    setSelectedHand(null);
+    rerender();
+  };
+
+  const resolveRound = () => {
+    const s = stateRef.current;
+    s.phase = "battle";
+    s.queue = buildQueue(s);
     setInspecting(null);
     rerender();
   };
 
   const step = () => {
-    const state = stateRef.current;
     if (winner) return;
+    const state = stateRef.current;
 
     if (state.queue.length === 0) {
-      state.round += 1;
-      state.queue = buildQueue(state);
-      if (state.queue.length === 0) return;
+      // Fase 5 de esta ronda: Colapso, despues liberar casilleros y cobrar Escombros — y si nadie
+      // gano todavia, abrir la ventana de despliegue de la ronda que sigue.
+      for (const p of POSITIONS) {
+        if (state.boardA[p] && checkCollapse(state.boardA[p])) pushLog(`${state.boardA[p].card.identity.name} colapsa.`);
+        if (state.boardB[p] && checkCollapse(state.boardB[p])) pushLog(`${state.boardB[p].card.identity.name} colapsa.`);
+      }
+      for (const [board, sideKey] of [[state.boardA, "A"], [state.boardB, "B"]]) {
+        for (const p of POSITIONS) {
+          const b = board[p];
+          if (b && (b.fallen || b.collapsed)) {
+            state.escombros[sideKey] += escombrosFromLoss(b.card.cost);
+            board[p] = null;
+          }
+        }
+      }
+      beginRound(state);
+      setSelectedHand(null);
+      pushLog(`— Ronda ${state.round} —`);
+      rerender();
+      return;
     }
 
     let entry = state.queue.shift();
@@ -209,11 +297,33 @@ export default function BoardPrototype({ onBack }) {
     const { battler, side } = entry;
     const defBoard = side === "A" ? state.boardB : state.boardA;
     const defNucleo = side === "A" ? state.nucleoB : state.nucleoA;
-    const result = resolveAttack(battler, defBoard, defNucleo);
+
+    // Cabeza rota + Magic: intenta la salida por Linaje antes de resolver (magicFallback.js).
+    let magicFallbackActive = false;
+    if (battler.activeType === "magic" && battler.zones.head.integrity <= 0) {
+      const ownBoard = side === "A" ? state.boardA : state.boardB;
+      const applied = attemptMagicFallback(battler, side, {
+        impulsoAvailable: side === "A" ? state.impulsoA : state.impulsoB,
+        escombrosAvailable: state.escombros[side],
+        ownBoard,
+      });
+      if (applied.ok) {
+        if (applied.impulsoSpent) {
+          if (side === "A") state.impulsoA -= applied.impulsoSpent;
+          else state.impulsoB -= applied.impulsoSpent;
+        }
+        if (applied.escombrosSpent) state.escombros[side] -= applied.escombrosSpent;
+        if (applied.kind === "cantera_torso" && applied.lethal) battler.strength += 2;
+        magicFallbackActive = true;
+      }
+    }
+
+    const result = resolveAttack(battler, defBoard, defNucleo, true, state.round <= NUCLEO_SHIELD_ROUNDS, magicFallbackActive);
 
     let line = `${battler.card.identity.name}: `;
     if (result.kind === "no_target") line += "sin objetivo.";
     else if (result.kind === "no_magic_head_broken") line += "no puede lanzar Magic (cabeza rota).";
+    else if (result.kind === "nucleo_shielded") line += "el escudo del Núcleo absorbe el golpe.";
     else if (result.kind === "hit_nucleo") line += `impacta el Núcleo rival por ${result.dmg}.`;
     else {
       const defender = defBoard[result.position];
@@ -223,14 +333,7 @@ export default function BoardPrototype({ onBack }) {
       if (result.fell) line += " — ¡cae!";
       line += ".";
     }
-    setLog((prev) => [...prev.slice(-7), line]);
-
-    if (state.queue.length === 0) {
-      for (const p of POSITIONS) {
-        if (state.boardA[p] && checkCollapse(state.boardA[p])) setLog((prev) => [...prev.slice(-7), `${state.boardA[p].card.identity.name} colapsa.`]);
-        if (state.boardB[p] && checkCollapse(state.boardB[p])) setLog((prev) => [...prev.slice(-7), `${state.boardB[p].card.identity.name} colapsa.`]);
-      }
-    }
+    pushLog(line);
 
     if (state.nucleoA.hp <= 0) setWinner("B");
     else if (state.nucleoB.hp <= 0) setWinner("A");
@@ -239,14 +342,17 @@ export default function BoardPrototype({ onBack }) {
   };
 
   const s = stateRef.current;
+  const shielded = s.round <= NUCLEO_SHIELD_ROUNDS;
 
   // La "capa transparente": de la carta de mano seleccionada, O de la unidad ya desplegada que se
   // esta inspeccionando — cual de las dos manda cuando ambas podrian coexistir no pasa, se
   // excluyen entre si (elegir una carta de mano cierra la inspeccion y viceversa).
-  const handCard = selectedHand !== null ? s.hand[selectedHand] : null;
+  const handCard = selectedHand !== null ? s.handA[selectedHand] : null;
+  const affordable = handCard ? handCard.cost <= s.impulsoA : true;
   const inspectedBattler = inspecting ? (inspecting.side === "A" ? s.boardA : s.boardB)[inspecting.position] : null;
   const activeType = handCard?.combat.damageTypeActive || inspectedBattler?.activeType;
-  const legalOwnPositions = handCard ? DAMAGE_TYPES[handCard.combat.damageTypeActive].station : null;
+  const legalOwnPositions = handCard && affordable ? DAMAGE_TYPES[handCard.combat.damageTypeActive].station : handCard ? [] : null;
+  const hasEmptyLegalSlot = legalOwnPositions ? legalOwnPositions.some((p) => !s.boardA[p]) : false;
   const threat = activeType
     ? threatPreview(activeType, inspectedBattler && inspecting.side === "B" ? s.boardA : s.boardB)
     : null;
@@ -264,9 +370,15 @@ export default function BoardPrototype({ onBack }) {
   return (
     <div className="board-proto">
       <div className={`board-proto-nucleo${threat?.nucleoOpen ? " board-proto-nucleo--alert" : ""}`}>
-        <span>Núcleo rival: {s.nucleoB.hp}/{NUCLEO_BASE}</span>
-        <span>{s.phase === "deploy" ? "Desplegando" : `Ronda ${s.round}`}</span>
-        <span>Núcleo propio: {s.nucleoA.hp}/{NUCLEO_BASE}</span>
+        <span>Núcleo rival: {s.nucleoB.hp}{shielded ? " 🛡" : ""}</span>
+        <span>{s.phase === "deploy" ? `Ronda ${s.round} — desplegando` : `Ronda ${s.round} — resolviendo`}</span>
+        <span>Núcleo propio: {s.nucleoA.hp}{shielded ? " 🛡" : ""}</span>
+      </div>
+
+      <div className="board-proto-resources">
+        <span>Impulso: {s.impulsoA}/{IMPULSO_CAP}</span>
+        <span>Escombros: {s.escombros.A}</span>
+        {s.reserveA.length > 0 && <span>Reserva: {s.reserveA.length}</span>}
       </div>
 
       <div className="board-grid-row">
@@ -300,27 +412,35 @@ export default function BoardPrototype({ onBack }) {
       {(handCard || inspectedBattler) && (
         <div className="board-proto-selection">
           <span>
-            {handCard ? `${handCard.identity.name} (${TYPE_LABEL[handCard.combat.damageTypeActive]})` : `${inspectedBattler.card.identity.name} (${TYPE_LABEL[inspectedBattler.activeType]})`}
+            {handCard ? `${handCard.identity.name} (${TYPE_LABEL[handCard.combat.damageTypeActive]}) · Coste ${handCard.cost}` : `${inspectedBattler.card.identity.name} (${TYPE_LABEL[inspectedBattler.activeType]})`}
             {threat?.nucleoOpen && " — ¡línea abierta al Núcleo!"}
+            {handCard && !affordable && " — no alcanza el Impulso"}
           </span>
-          <button
-            type="button"
-            className="board-proto-selection-btn"
-            onClick={() => setSheetCard(handCard || inspectedBattler.card)}
-          >
-            Ver ficha
-          </button>
+          <span className="board-proto-selection-actions">
+            {handCard && affordable && !hasEmptyLegalSlot && (
+              <button type="button" className="board-proto-selection-btn" onClick={commitToReserve}>
+                A Reserva
+              </button>
+            )}
+            <button
+              type="button"
+              className="board-proto-selection-btn"
+              onClick={() => setSheetCard(handCard || inspectedBattler.card)}
+            >
+              Ver ficha
+            </button>
+          </span>
         </div>
       )}
 
       {s.phase === "deploy" ? (
         <div className="board-hand pixel-scroll">
-          {s.hand.length === 0 && <div className="board-hand-empty">Mano vacía.</div>}
-          {s.hand.map((card, i) => (
+          {s.handA.length === 0 && <div className="board-hand-empty">Mano vacía.</div>}
+          {s.handA.map((card, i) => (
             <button
               key={card.code}
               type="button"
-              className={`board-hand-card${i === selectedHand ? " board-hand-card--selected" : ""}`}
+              className={`board-hand-card${i === selectedHand ? " board-hand-card--selected" : ""}${card.cost > s.impulsoA ? " board-hand-card--unaffordable" : ""}`}
               onClick={() => { setInspecting(null); setSelectedHand(i === selectedHand ? null : i); }}
             >
               <span className="board-hand-card-cost">{card.cost}</span>
@@ -339,8 +459,8 @@ export default function BoardPrototype({ onBack }) {
 
       <div className="board-proto-actions">
         {s.phase === "deploy" ? (
-          <button type="button" className="scan-again" onClick={startBattle} disabled={POSITIONS.every((p) => !s.boardA[p])}>
-            Comenzar batalla
+          <button type="button" className="scan-again" onClick={resolveRound}>
+            Resolver ronda →
           </button>
         ) : (
           <button type="button" className="scan-again" onClick={step} disabled={!!winner}>

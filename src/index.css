@@ -3173,6 +3173,12 @@ button, input {
   color: var(--text-body);
 }
 
+.board-proto-selection-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
 .board-proto-selection-btn {
   flex: none;
   font-family: var(--font-pixel);
@@ -3183,6 +3189,17 @@ button, input {
   color: var(--paper);
   border: 2px solid var(--line);
   cursor: pointer;
+}
+
+/* --- Recursos propios: Impulso/Escombros/Reserva, visibles siempre en fase de despliegue --- */
+.board-proto-resources {
+  flex: none;
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-pixel);
+  font-size: 0.52rem;
+  color: rgba(255, 248, 236, 0.85);
+  padding: 2px 4px 4px;
 }
 
 /* --- Mano (fase de despliegue) --- */
@@ -3217,6 +3234,11 @@ button, input {
 .board-hand-card--selected {
   border-color: #f2d675;
   box-shadow: 0 0 0 2px rgba(242, 214, 117, 0.55);
+}
+
+.board-hand-card--unaffordable {
+  opacity: 0.45;
+  filter: grayscale(0.6);
 }
 
 .board-hand-card-cost {

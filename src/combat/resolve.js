@@ -27,7 +27,7 @@ function applyZoneBreakCascade(battler, zone) {
   // primera pasada) — solo importan para el chequeo de Colapso, ver checkCollapse() abajo.
 }
 
-function applyDamageToZone(defender, zoneName, dmg) {
+export function applyDamageToZone(defender, zoneName, dmg) {
   const zone = defender.zones[zoneName];
   const wasAlive = zone.integrity > 0;
   zone.integrity = Math.max(0, zone.integrity - dmg);
@@ -90,9 +90,15 @@ function hitZone(defender, zoneName, activeType, fuerza) {
  *   chat), como alternativa a graceRounds (que en vez de bloquear el golpe, aflojaba la regla de
  *   exposicion). Magic paga igual su costo de cabeza: el escudo protege al Nucleo, no vuelve
  *   gratis el hechizo.
+ * @param {boolean} [magicFallbackActive] - default false: salta el corte de "cabeza rota => no
+ *   puede lanzar Magic" — usado cuando el llamador (ver magicFallback.js) ya cobro el costo
+ *   alternativo por Linaje ANTES de esta llamada (Impulso/Escombros/Iniciativa/Torso/drenar a un
+ *   aliado, segun el Linaje). El costo normal de cabeza (1 de Integridad) se sigue aplicando mas
+ *   abajo, pero como la cabeza ya esta en 0 es un no-op inofensivo (Math.max clamp) — no duplica
+ *   penalizacion.
  */
-export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false) {
-  if (attacker.activeType === "magic" && attacker.zones.head.integrity <= 0) {
+export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false, magicFallbackActive = false) {
+  if (attacker.activeType === "magic" && attacker.zones.head.integrity <= 0 && !magicFallbackActive) {
     return { kind: "no_magic_head_broken" };
   }
 

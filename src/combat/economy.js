@@ -20,6 +20,7 @@ import { ZONES } from "../cardgen/zones.js";
 
 export const IMPULSO_CAP = 8; // coincide con el Coste maximo (doc §10) — arriba de esto, bankear no suma nada
 export const IMPULSO_START = 1; // antes del +1 de la ronda 1; con ese incremento queda en 2
+export const NUCLEO_SHIELD_ROUNDS = 3; // adoptado en el chat — ver simulateEconomy.js para el porque
 
 export function gainImpulso(current) {
   return Math.min(current + 1, IMPULSO_CAP);
