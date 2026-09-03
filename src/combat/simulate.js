@@ -5,14 +5,25 @@
 // queda libre (Caidos), un suplente de Reserva lo ocupa al empezar la ronda siguiente — aproxima
 // la Fase 3 real (el despliegue pasa TODAS las rondas) sin modelar Impulso/Coste/mano todavia.
 import { autoDeploy, aliveBattlers, backfillFromReserve, NUCLEO_BASE, POSITIONS } from "./board.js";
-import { resolveAttack, checkCollapse } from "./resolve.js";
+import { resolveAttack, checkCollapse, applyPostAttackTraits } from "./resolve.js";
+import { hasTrait } from "./traits.js";
 
+/** Fulminante (raro) siempre va primero, Paciente (raro) siempre va ultimo — ambos ganan a la
+ * Iniciativa, que solo desempata entre battlers "normales" (o entre 2 Fulminantes, o entre 2
+ * Pacientes). Doc de cada rasgo: Fulminante "actua antes que cualquier otra unidad del tablero",
+ * Paciente "actua siempre ultimo" (su contrapartida por acumular Fuerza, ver resolve.js). */
 export function buildTurnOrder(boardA, boardB, priorityFirst) {
   const tagged = [
     ...aliveBattlers(boardA).map((b) => ({ battler: b, side: "A" })),
     ...aliveBattlers(boardB).map((b) => ({ battler: b, side: "B" })),
   ];
   tagged.sort((x, y) => {
+    const fx = hasTrait(x.battler, "fulminante") ? 1 : 0;
+    const fy = hasTrait(y.battler, "fulminante") ? 1 : 0;
+    if (fx !== fy) return fy - fx;
+    const px = hasTrait(x.battler, "paciente") ? 1 : 0;
+    const py = hasTrait(y.battler, "paciente") ? 1 : 0;
+    if (px !== py) return px - py;
     if (y.battler.initiative !== x.battler.initiative) return y.battler.initiative - x.battler.initiative;
     if (x.side === y.side) return 0;
     return x.side === priorityFirst ? -1 : 1; // empate: actua primero el lado con prioridad
@@ -86,6 +97,7 @@ export function simulateMatch(cardsA, cardsB, { maxRounds = 40, lineOfSight = tr
       const typeStats = stats.byType[battler.activeType];
 
       const result = resolveAttack(battler, defBoard, defNucleo, lineOfSight);
+      applyPostAttackTraits(battler, result);
 
       if (result.kind === "no_target" || result.kind === "no_magic_head_broken") {
         typeStats.noTarget += 1;

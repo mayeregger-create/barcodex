@@ -11,8 +11,9 @@
 // rival se autogestiona su propia mano con la misma heuristica greedy del simulador headless.
 import { useEffect, useRef, useState } from "react";
 import { generateCard } from "../cardgen/card.js";
-import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, estandarteBonusFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
-import { resolveAttack, checkCollapse } from "../combat/resolve.js";
+import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, estandarteBonusFor, legalStationFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
+import { resolveAttack, checkCollapse, applyPostAttackTraits } from "../combat/resolve.js";
+import { buildTurnOrder } from "../combat/simulate.js";
 import { attemptMagicFallback } from "../combat/magicFallback.js";
 import { tryReparar, REPARAR_COST } from "../combat/nucleoAbilities.js";
 import {
@@ -104,17 +105,12 @@ function freshMatch() {
   return state;
 }
 
+/** Wrapper fino sobre buildTurnOrder (simulate.js) — comparte la logica de orden (incluida la de
+ * Fulminante/Paciente) con el simulador headless en vez de mantener una copia local que se puede
+ * desincronizar. */
 function buildQueue(state) {
-  const tagged = [];
-  for (const p of POSITIONS) if (state.boardA[p]) tagged.push({ battler: state.boardA[p], side: "A" });
-  for (const p of POSITIONS) if (state.boardB[p]) tagged.push({ battler: state.boardB[p], side: "B" });
   const priorityFirst = state.round % 2 === 1 ? "A" : "B";
-  tagged.sort((x, y) => {
-    if (y.battler.initiative !== x.battler.initiative) return y.battler.initiative - x.battler.initiative;
-    if (x.side === y.side) return 0;
-    return x.side === priorityFirst ? -1 : 1;
-  });
-  return tagged;
+  return buildTurnOrder(state.boardA, state.boardB, priorityFirst);
 }
 
 /** Posiciones enemigas que ESTE tipo amenaza ahora mismo (ocupadas dentro de su Alcance), y si la
@@ -241,7 +237,7 @@ export default function BoardPrototype({ onBack }) {
     const s = stateRef.current;
     if (s.phase !== "deploy" || selectedHand === null || s.boardA[position]) return;
     const card = s.handA[selectedHand];
-    if (!DAMAGE_TYPES[card.combat.damageTypeActive].station.includes(position)) return; // no legal aca
+    if (!legalStationFor(card).includes(position)) return; // no legal aca
     const cost = effectiveDeployCost(card, s.regenteA.identity.class); // "leal": -2 si comparte Clase con el Regente
     if (cost > s.impulsoA) return; // no alcanza el Impulso de esta ronda
     s.boardA[position] = makeBattler(card);
@@ -346,11 +342,13 @@ export default function BoardPrototype({ onBack }) {
     const ownBoardForAura = side === "A" ? state.boardA : state.boardB;
     const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
     const result = resolveAttack(battler, defBoard, defNucleo, true, state.round <= NUCLEO_SHIELD_ROUNDS, magicFallbackActive, fuerzaBonus);
+    applyPostAttackTraits(battler, result); // paciente acumula, sereno se repara — solo si "no ataco"
 
     let line = `${battler.card.identity.name}: `;
     if (result.kind === "no_target") line += "sin objetivo.";
     else if (result.kind === "no_magic_head_broken") line += "no puede lanzar Magic (cabeza rota).";
     else if (result.kind === "nucleo_shielded") line += "el escudo del Núcleo absorbe el golpe.";
+    else if (result.kind === "dodged") line += `${defBoard[result.position].card.identity.name} esquiva.`;
     else if (result.kind === "hit_nucleo") line += `impacta el Núcleo rival por ${result.dmg}.`;
     else {
       const defender = defBoard[result.position];
@@ -379,7 +377,7 @@ export default function BoardPrototype({ onBack }) {
   const affordable = handCard ? handCardCost <= s.impulsoA : true;
   const inspectedBattler = inspecting ? (inspecting.side === "A" ? s.boardA : s.boardB)[inspecting.position] : null;
   const activeType = handCard?.combat.damageTypeActive || inspectedBattler?.activeType;
-  const legalOwnPositions = handCard && affordable ? DAMAGE_TYPES[handCard.combat.damageTypeActive].station : handCard ? [] : null;
+  const legalOwnPositions = handCard && affordable ? legalStationFor(handCard) : handCard ? [] : null;
   const hasEmptyLegalSlot = legalOwnPositions ? legalOwnPositions.some((p) => !s.boardA[p]) : false;
   const threat = activeType
     ? threatPreview(activeType, inspectedBattler && inspecting.side === "B" ? s.boardA : s.boardB)

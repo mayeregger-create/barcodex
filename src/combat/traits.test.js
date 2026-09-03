@@ -1,15 +1,18 @@
 // src/combat/traits.test.js
-// Verifica el subconjunto de rasgos con comportamiento de combate implementado esta sesion:
-// brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico, estandarte,
-// vengativo, reflejo (motor de combate) + abastecedor, leal (economia) + Reparar (Nucleo).
-// Todo con battlers sinteticos (no generateCard) para control exacto de cada escenario.
+// Verifica el subconjunto de rasgos con comportamiento de combate implementado en esta sesion y la
+// siguiente: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
+// estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
+// sereno, flanqueador, avanzado, atalaya (motor de combate) + abastecedor, leal (economia) +
+// Reparar (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada
+// escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAttack, effectiveFuerza, applyDamageToZone } from "./resolve.js";
+import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits } from "./resolve.js";
 import { selectTarget } from "./targeting.js";
-import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, POSITIONS } from "./board.js";
+import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, legalStationFor, POSITIONS } from "./board.js";
 import { escombrosFromDeploy, effectiveDeployCost, commitFromHand } from "./economy.js";
 import { findMostDamaged, tryReparar, REPARAR_COST } from "./nucleoAbilities.js";
+import { buildTurnOrder } from "./simulate.js";
 
 const ZONE_BASE = { head: 4, torso: 6, armMain: 5, armOff: 5, legs: 5 };
 
@@ -34,7 +37,7 @@ function fakeBattler({
     liveZones[z] = { integrity: overrides[z]?.liveIntegrity ?? base, plate, everPlated: plate > 0 };
   }
   return {
-    card: { identity: { trait, secondTrait, class: clase, name: "Test" }, cost, zones: genZones },
+    card: { identity: { trait, secondTrait, class: clase, name: "Test" }, cost, zones: genZones, combat: { damageTypeActive: activeType } },
     zones: liveZones,
     strength,
     initiative,
@@ -44,6 +47,7 @@ function fakeBattler({
     weaponSwapped: false,
     remachadoUsed: false,
     reflejoUsedThisRound: false,
+    pacienteStacks: 0,
   };
 }
 
@@ -376,4 +380,167 @@ test("positionOf / adjacentPositions: sanity basica", () => {
   assert.equal(positionOf(fakeBattler(), board), null);
   assert.deepEqual(adjacentPositions(2).sort(), [1, 3]);
   assert.deepEqual(adjacentPositions(1), [2]);
+});
+
+// ---------- diestro ----------
+
+test("diestro: perder el brazo principal no reduce la Fuerza al cambiar de mano", () => {
+  const kill0 = { liveIntegrity: 0 };
+  const attacker = fakeBattler({ activeType: "cut", strength: 5 });
+  const defender = fakeBattler({
+    trait: "diestro",
+    activeType: "cut",
+    strength: 4,
+    overrides: { head: kill0, torso: kill0, legs: kill0, armMain: { liveIntegrity: 1 }, armOff: { liveIntegrity: 5 } },
+  });
+  resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.armMain.integrity, 0);
+  assert.equal(defender.weaponSwapped, true);
+  assert.equal(defender.strength, 4, "diestro: sin penalizacion de -2");
+});
+
+test("sin diestro: cambiar de mano SI penaliza -2 Fuerza", () => {
+  const kill0 = { liveIntegrity: 0 };
+  const attacker = fakeBattler({ activeType: "cut", strength: 5 });
+  const defender = fakeBattler({
+    activeType: "cut",
+    strength: 4,
+    overrides: { head: kill0, torso: kill0, legs: kill0, armMain: { liveIntegrity: 1 }, armOff: { liveIntegrity: 5 } },
+  });
+  resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.weaponSwapped, true);
+  assert.equal(defender.strength, 2, "sin diestro: -2 Fuerza");
+});
+
+// ---------- yelmo_sellado ----------
+
+test("yelmo_sellado: la cabeza es inmune a todo dano, sin importar el tipo", () => {
+  const attacker = fakeBattler({ activeType: "magic", strength: 5 });
+  const defender = onlyZone(fakeBattler({ trait: "yelmo_sellado" }), "head");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(result.kind, "no_target", "sin otra zona viva, ni Magic puede tocar la cabeza sellada");
+  assert.equal(defender.zones.head.integrity, ZONE_BASE.head);
+});
+
+test("yelmo_sellado: el targeting rutea a otra zona viva en vez de desperdiciar el turno en la cabeza inmune", () => {
+  const kill0 = { liveIntegrity: 0 };
+  const attacker = fakeBattler({ activeType: "cut", strength: 3 });
+  const defender = fakeBattler({ trait: "yelmo_sellado", overrides: { armMain: kill0, armOff: kill0, legs: kill0 } });
+  // vivos: head(4, inmune) y torso(6) — sin la inmunidad, Cut elegiria cabeza por ser mas debil.
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(result.kind, "hit_unit");
+  assert.deepEqual(result.zones, ["torso"]);
+});
+
+// ---------- escurridizo ----------
+
+test("escurridizo: esquiva un ataque Pierce entero, sin placa ni dano", () => {
+  const attacker = fakeBattler({ activeType: "pierce", strength: 4 });
+  const defender = onlyZone(fakeBattler({ trait: "escurridizo" }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 2: defender }), { hp: 20 }, false); // pierce alcanza pos 2-3
+  assert.equal(result.kind, "dodged");
+  assert.equal(defender.zones.torso.integrity, ZONE_BASE.torso);
+});
+
+test("escurridizo: NO esquiva ataques que no son Pierce", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 3 });
+  const defender = onlyZone(fakeBattler({ trait: "escurridizo" }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(result.kind, "hit_unit");
+});
+
+// ---------- fulminante / paciente (orden de turno) ----------
+
+test("fulminante: actua antes que cualquiera, sin importar Iniciativa", () => {
+  const slow = fakeBattler({ trait: "fulminante", initiative: 1 });
+  const fast = fakeBattler({ initiative: 20 });
+  const order = buildTurnOrder(boardWith({ 1: slow }), boardWith({ 1: fast }), "A");
+  assert.equal(order[0].battler, slow);
+  assert.equal(order[1].battler, fast);
+});
+
+test("paciente: siempre actua ultimo, sin importar Iniciativa", () => {
+  const patient = fakeBattler({ trait: "paciente", initiative: 20 });
+  const normal = fakeBattler({ initiative: 1 });
+  const order = buildTurnOrder(boardWith({ 1: patient }), boardWith({ 1: normal }), "A");
+  assert.equal(order[0].battler, normal);
+  assert.equal(order[1].battler, patient);
+});
+
+// ---------- paciente (Fuerza acumulada) ----------
+
+test("paciente: acumula +2 Fuerza cada vez que no logra atacar", () => {
+  const battler = fakeBattler({ trait: "paciente", activeType: "pierce", strength: 3 });
+  applyPostAttackTraits(battler, { kind: "no_target" });
+  assert.equal(battler.pacienteStacks, 2);
+  applyPostAttackTraits(battler, { kind: "no_magic_head_broken" });
+  assert.equal(battler.pacienteStacks, 4);
+  applyPostAttackTraits(battler, { kind: "hit_unit" }); // SI ataco: no suma
+  assert.equal(battler.pacienteStacks, 4);
+});
+
+test("paciente: el stack acumulado se refleja en la Fuerza efectiva", () => {
+  const battler = fakeBattler({ trait: "paciente", activeType: "cut", strength: 2 }); // tope cut = 4+2=6
+  battler.pacienteStacks = 3;
+  assert.equal(effectiveFuerza(battler), 5);
+});
+
+// ---------- sereno ----------
+
+test("sereno: si no ataco, repone 1 placa al final de la ronda", () => {
+  const battler = fakeBattler({ trait: "sereno", overrides: { torso: { plate: 1, liveIntegrity: 5 } } });
+  battler.zones.torso.plate = 0; // ya se le habia roto antes en la partida
+  applyPostAttackTraits(battler, { kind: "no_target" });
+  assert.equal(battler.zones.torso.plate, 1);
+});
+
+test("sereno: si SI ataco, no repone nada", () => {
+  const battler = fakeBattler({ trait: "sereno", overrides: { torso: { plate: 1, liveIntegrity: 5 } } });
+  battler.zones.torso.plate = 0;
+  applyPostAttackTraits(battler, { kind: "hit_unit" });
+  assert.equal(battler.zones.torso.plate, 0);
+});
+
+test("sereno: no repone una zona que nunca tuvo placa", () => {
+  const battler = fakeBattler({ trait: "sereno" });
+  applyPostAttackTraits(battler, { kind: "no_target" });
+  for (const z of Object.keys(battler.zones)) assert.equal(battler.zones[z].plate, 0);
+});
+
+// ---------- flanqueador / avanzado / atalaya (despliegue) ----------
+
+test("flanqueador: puede desplegarse en cualquier posicion, sin importar su tipo de dano", () => {
+  const card = fakeBattler({ trait: "flanqueador", activeType: "pierce" }).card; // pierce normalmente solo 2-3
+  assert.deepEqual(legalStationFor(card).slice().sort(), [1, 2, 3]);
+});
+
+test("avanzado: siempre entra en posicion 1, sin importar su tipo de dano", () => {
+  const card = fakeBattler({ trait: "avanzado", activeType: "pierce" }).card;
+  assert.deepEqual(legalStationFor(card), [1]);
+});
+
+test("atalaya: siempre entra en posicion 3, sin importar su tipo de dano", () => {
+  const card = fakeBattler({ trait: "atalaya", activeType: "blunt" }).card;
+  assert.deepEqual(legalStationFor(card), [3]);
+});
+
+test("sin rasgos de posicion: la Estacion normal del tipo de dano sigue aplicando", () => {
+  const card = fakeBattler({ activeType: "pierce" }).card;
+  assert.deepEqual(legalStationFor(card), [2, 3]);
+});
+
+// ---------- atalaya (Alcance +1) ----------
+
+test("atalaya: Alcance +1 le deja llegar a cualquier posicion, no solo el Alcance normal de su tipo", () => {
+  const attacker = fakeBattler({ trait: "atalaya", activeType: "pierce" }); // pierce alcance normal = [2,3]
+  const defenderAt1 = onlyZone(fakeBattler(), "torso");
+  const target = selectTarget(attacker, boardWith({ 1: defenderAt1 }), false);
+  assert.ok(target && target.position === 1, "atalaya deberia poder alcanzar la posicion 1, fuera del alcance normal de Pierce");
+});
+
+test("sin atalaya: Pierce no alcanza la posicion 1", () => {
+  const attacker = fakeBattler({ activeType: "pierce" });
+  const defenderAt1 = onlyZone(fakeBattler(), "torso");
+  const target = selectTarget(attacker, boardWith({ 1: defenderAt1 }), false);
+  assert.equal(target, null);
 });

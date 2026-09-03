@@ -4,7 +4,7 @@
 // separada a proposito, para poder seguir comparando contra el baseline sin economia si hace
 // falta. Ver economy.js para las decisiones de diseno de cada recurso.
 import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, estandarteBonusFor, NUCLEO_BASE, POSITIONS } from "./board.js";
-import { resolveAttack, checkCollapse } from "./resolve.js";
+import { resolveAttack, checkCollapse, applyPostAttackTraits } from "./resolve.js";
 import { buildTurnOrder } from "./simulate.js";
 import {
   gainImpulso,
@@ -170,6 +170,7 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
       const ownBoardForAura = side === "A" ? boardA : boardB;
       const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
       const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds, magicFallbackActive, fuerzaBonus);
+      applyPostAttackTraits(battler, result); // paciente acumula, sereno se repara — solo si "no ataco"
       log.push({ round, side, card: battler.card.identity.displayName, magicFallbackKind: fallbackKind, ...result });
       if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
       if (nucleoA.hp <= 0) { winner = "B"; break; }

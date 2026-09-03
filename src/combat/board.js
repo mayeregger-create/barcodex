@@ -9,14 +9,15 @@
 //    queda fija en su posicion todo el combate. (Impulso/Escombros/Regente SI estan implementados
 //    — ver economy.js/simulateEconomy.js.)
 //  - La mayoria de los 58 rasgos como comportamiento de COMBATE siguen siendo solo sus efectos de
-//    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js: brutal, carnicero,
-//    ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo, reflejo
-//    (combate) + abastecedor, leal (economia/despliegue, ver economy.js). El resto (movimiento,
-//    turnos extra, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle de que
-//    esta cubierto.
+//    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js/simulate.js: brutal,
+//    carnicero, ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo,
+//    reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente, sereno, flanqueador,
+//    avanzado, atalaya (combate) + abastecedor, leal (economia/despliegue, ver economy.js). El
+//    resto (movimiento real, turnos extra, legendarios, etc.) sigue pendiente — ver
+//    traits.test.js para el detalle de que esta cubierto.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
-import { hasTrait } from "./traits.js";
+import { hasTrait, cardHasTrait } from "./traits.js";
 
 export const POSITIONS = [1, 2, 3];
 export const NUCLEO_BASE = 8;
@@ -67,7 +68,19 @@ export function makeBattler(generated) {
     weaponSwapped: false, // brazo principal roto, paso a brazo secundario (doc §4.2)
     remachadoUsed: false, // rasgo "remachado": 1 vez por partida, una placa rota se repone
     reflejoUsedThisRound: false, // rasgo "reflejo": 1 vez por ronda, contraataca si sobrevive a un golpe
+    pacienteStacks: 0, // rasgo "paciente": +2 Fuerza acumulativo por cada ronda que no ataca
   };
+}
+
+/** Posiciones legales de despliegue para una carta — normalmente su Estacion (doc §3), pero
+ * algunos rasgos la anulan: Avanzado siempre entra en pos.1, Atalaya siempre en pos.3, Flanqueador
+ * puede entrar en cualquiera. Compartida por placeCard/backfillFromReserve/autoDeploy para que
+ * ningun camino de despliegue se olvide de un rasgo. */
+export function legalStationFor(card) {
+  if (cardHasTrait(card, "avanzado")) return [1];
+  if (cardHasTrait(card, "atalaya")) return [3];
+  if (cardHasTrait(card, "flanqueador")) return [...POSITIONS];
+  return DAMAGE_TYPES[card.combat.damageTypeActive].station;
 }
 
 /** Aura del rasgo "estandarte": +1 Fuerza por cada aliado ADYACENTE (no uno mismo) que lo tenga.
@@ -100,12 +113,12 @@ export function resetRoundFlags(board) {
 export function autoDeploy(generatedCards) {
   const board = { 1: null, 2: null, 3: null };
   const byFrontPreference = [...generatedCards].sort((a, b) => {
-    const pref = (c) => Math.min(...DAMAGE_TYPES[c.combat.damageTypeActive].station);
+    const pref = (c) => Math.min(...legalStationFor(c));
     return pref(a) - pref(b);
   });
   const undeployed = [];
   for (const card of byFrontPreference) {
-    const legal = DAMAGE_TYPES[card.combat.damageTypeActive].station;
+    const legal = legalStationFor(card);
     const slot = legal.find((p) => !board[p]);
     if (slot) board[slot] = makeBattler(card);
     else undeployed.push(card);
@@ -124,7 +137,7 @@ export function aliveBattlers(board) {
 export function backfillFromReserve(board, reserve) {
   for (const p of POSITIONS) {
     if (board[p]) continue;
-    const idx = reserve.findIndex((card) => DAMAGE_TYPES[card.combat.damageTypeActive].station.includes(p));
+    const idx = reserve.findIndex((card) => legalStationFor(card).includes(p));
     if (idx === -1) continue;
     const [card] = reserve.splice(idx, 1);
     board[p] = makeBattler(card);
@@ -136,7 +149,7 @@ export function backfillFromReserve(board, reserve) {
  * para su Estacion, si no a la Reserva, donde backfillFromReserve la levanta gratis apenas se abra
  * un lugar. Muta `board` y `reserve`. */
 export function placeCard(card, board, reserve) {
-  const legal = DAMAGE_TYPES[card.combat.damageTypeActive].station;
+  const legal = legalStationFor(card);
   const slot = legal.find((p) => !board[p]);
   if (slot) board[slot] = makeBattler(card);
   else reserve.push(card);

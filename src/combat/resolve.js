@@ -15,6 +15,12 @@ export function effectiveFuerza(battler) {
   if (hasTrait(battler, "vengativo")) {
     fuerza += ZONES.filter((z) => battler.zones[z].integrity <= 0).length;
   }
+  // Paciente (raro): +2 Fuerza acumulativo por cada ronda que no ataco (ver applyPostAttackTraits) —
+  // nunca se resetea, es la recompensa de "esperar" (su contrapartida es actuar siempre ultimo,
+  // ver simulate.js#buildTurnOrder).
+  if (hasTrait(battler, "paciente")) {
+    fuerza += battler.pacienteStacks || 0;
+  }
   return Math.min(fuerza, DAMAGE_TYPES[battler.activeType].fuerzaTope + 2);
 }
 
@@ -29,7 +35,8 @@ function applyZoneBreakCascade(battler, zone) {
     const offIntact = battler.zones.armOff.integrity > 0;
     if (offIntact && !battler.weaponSwapped) {
       battler.weaponSwapped = true;
-      battler.strength = Math.max(0, battler.strength - 2); // doc §4.2
+      // Diestro (comun): perder el brazo principal no le cuesta Fuerza al cambiar de mano.
+      if (!hasTrait(battler, "diestro")) battler.strength = Math.max(0, battler.strength - 2); // doc §4.2
     }
   }
   // armOff/legs: sin efecto numerico modelado aca (bonus de clase / movimiento no estan en esta
@@ -68,6 +75,13 @@ function tryRemachado(defender, zone) {
 function hitZone(attacker, defender, zoneName, fuerza) {
   const activeType = attacker.activeType;
   const zone = defender.zones[zoneName];
+
+  // Yelmo Sellado (raro, defensor): la cabeza es inmune a TODO dano, sin importar el tipo — se
+  // chequea antes que nada, ni siquiera cuenta como golpe recibido para el §17.3.
+  if (zoneName === "head" && hasTrait(defender, "yelmo_sellado")) {
+    return { plateChipped: false, integrityDamage: 0 };
+  }
+
   zone.hitsTaken = (zone.hitsTaken || 0) + 1; // instrumentacion para "cuantos golpes para romper" (§17.3)
 
   // Rasgos del atacante que suman Fuerza a ESTE golpe puntual (no a la ficha en general).
@@ -173,6 +187,13 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
   }
 
   const defender = defenderBoard[target.position];
+
+  // Escurridizo (raro, defensor): al ser atacado por Pierce, esquiva entero — no hay zona
+  // elegida, placa gastada ni progreso de ningun tipo, el golpe se pierde en el aire.
+  if (attacker.activeType === "pierce" && hasTrait(defender, "escurridizo")) {
+    return { kind: "dodged", position: target.position };
+  }
+
   const hits = target.zones.map((zoneName) => ({
     zone: zoneName,
     ...hitZone(attacker, defender, zoneName, fuerza),
@@ -205,6 +226,34 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
   }
 
   return result;
+}
+
+/** Sereno (raro): al final de la ronda, si no ataco, repone 1 de placa — como la placa nunca pasa
+ * de 1 (doc §7.6/materiales), "reponer" es simplemente volver a poner en 1 la primera zona que
+ * alguna vez tuvo placa y hoy esta en 0. Elige la primera en el orden de ZONES (desempate
+ * arbitrario pero deterministico), no la "mas dañada" — con placa binaria no hay tal cosa. */
+function restoreSerenoPlate(battler) {
+  for (const z of ZONES) {
+    const zone = battler.zones[z];
+    if (zone.integrity > 0 && zone.everPlated && zone.plate <= 0) {
+      zone.plate = 1;
+      return;
+    }
+  }
+}
+
+/**
+ * Rasgos que reaccionan a que el turno de `battler` NO haya conectado ningun ataque real
+ * (no_target / no_magic_head_broken) — Paciente acumula Fuerza para la proxima vez, Sereno se
+ * repara. Se llama una vez por turno, justo despues de resolveAttack, desde el orquestador (el
+ * mismo llamador que ya loguea `result` — no vive dentro de resolveAttack para no acoplar el
+ * "no until now hizo nada" con la resolucion del golpe en si).
+ */
+export function applyPostAttackTraits(battler, result) {
+  const didNotAttack = result.kind === "no_target" || result.kind === "no_magic_head_broken";
+  if (!didNotAttack) return;
+  if (hasTrait(battler, "paciente")) battler.pacienteStacks = (battler.pacienteStacks || 0) + 2;
+  if (hasTrait(battler, "sereno")) restoreSerenoPlate(battler);
 }
 
 /** Colapso (doc §4.3): ambos brazos rotos, o piernas + brazo principal rotos ("perdio las piernas
