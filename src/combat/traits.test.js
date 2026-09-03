@@ -2,14 +2,14 @@
 // Verifica el subconjunto de rasgos con comportamiento de combate implementado en esta sesion y
 // las siguientes: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
 // estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
-// sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico (motor de combate) +
-// abastecedor, leal (economia) + Reparar (Nucleo). Todo con battlers sinteticos (no generateCard)
-// para control exacto de cada escenario.
+// sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico, arrollador, arponero,
+// inamovible, elusivo (motor de combate) + abastecedor, leal (economia) + Reparar (Nucleo). Todo
+// con battlers sinteticos (no generateCard) para control exacto de cada escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits } from "./resolve.js";
 import { selectTarget } from "./targeting.js";
-import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, legalStationFor, POSITIONS } from "./board.js";
+import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, legalStationFor, pushBattler, elusivoSwap, POSITIONS } from "./board.js";
 import { escombrosFromDeploy, effectiveDeployCost, commitFromHand } from "./economy.js";
 import { findMostDamaged, tryReparar, REPARAR_COST } from "./nucleoAbilities.js";
 import { buildTurnOrder } from "./simulate.js";
@@ -637,4 +637,108 @@ test("sin gemelo/frenetico: un solo golpe a Fuerza completa", () => {
   const results = resolveTurn(attacker, "A", ctx);
   assert.equal(results.length, 1);
   assert.equal(results[0].integrityDamage, 4);
+});
+
+// ---------- arrollador / arponero / inamovible (empuje y arrastre) ----------
+
+test("arrollador: empuja al defensor una posicion si sobrevive", () => {
+  const attacker = fakeBattler({ trait: "arrollador", activeType: "cut", strength: 2 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const board = boardWith({ 2: defender });
+  const result = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.equal(result.pushed.from, 2);
+  assert.equal(result.pushed.to, 3);
+  assert.equal(board[3], defender);
+  assert.equal(board[2], null);
+});
+
+test("arponero: arrastra al defensor una posicion si sobrevive", () => {
+  const attacker = fakeBattler({ trait: "arponero", activeType: "cut", strength: 2 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const board = boardWith({ 2: defender });
+  const result = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.equal(result.pulled.from, 2);
+  assert.equal(result.pulled.to, 1);
+  assert.equal(board[1], defender);
+});
+
+test("arrollador: no empuja si el casillero destino esta ocupado", () => {
+  const attacker = fakeBattler({ trait: "arrollador", activeType: "cut", strength: 2 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const blocker = fakeBattler();
+  const board = boardWith({ 2: defender, 3: blocker });
+  const result = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.equal(result.pushed, undefined);
+  assert.equal(board[2], defender);
+});
+
+test("pushBattler: no empuja mas alla del borde del tablero", () => {
+  const defender = fakeBattler();
+  const board = boardWith({ 3: defender }); // ya en el borde, +1 se sale del tablero (POSITIONS=[1,2,3])
+  assert.equal(pushBattler(board, 3, 1), null);
+  assert.equal(board[3], defender);
+});
+
+test("inamovible: no puede ser empujado ni arrastrado", () => {
+  const attacker = fakeBattler({ trait: "arrollador", activeType: "cut", strength: 2 });
+  const defender = onlyZone(fakeBattler({ trait: "inamovible", overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const board = boardWith({ 2: defender });
+  const result = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.equal(result.pushed, undefined);
+  assert.equal(board[2], defender);
+});
+
+test("baluarte: tambien es inmune al empuje", () => {
+  const defender = fakeBattler({ trait: "baluarte" });
+  const board = boardWith({ 2: defender });
+  assert.equal(pushBattler(board, 2, 1), null);
+});
+
+test("arrollador/arponero: no mueven a un defensor que el golpe tumbo", () => {
+  const attacker = fakeBattler({ trait: "arrollador", activeType: "cut", strength: 10 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 1 } } }), "torso");
+  const board = boardWith({ 2: defender });
+  const result = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.equal(defender.fallen, true);
+  assert.equal(result.pushed, undefined);
+});
+
+// ---------- elusivo (intercambio defensivo) ----------
+
+test("elusivo: intercambia posicion con un aliado adyacente antes de que se elija la zona", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 3 });
+  const elusive = onlyZone(fakeBattler({ trait: "elusivo", overrides: { torso: { liveIntegrity: 3 } } }), "torso");
+  const ally = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 3 } } }), "torso");
+  const board = boardWith({ 1: elusive, 2: ally }); // Cut ataca pos.1, la mas cercana dentro de 1-2
+  const target = selectTarget(attacker, board, false);
+  assert.equal(target.position, 1);
+  assert.equal(board[1], ally, "elusivo se fue a la posicion 2, el aliado entro a la 1");
+  assert.equal(board[2], elusive);
+});
+
+test("elusivo: sin aliado adyacente vivo, no pasa nada", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 3 });
+  const elusive = onlyZone(fakeBattler({ trait: "elusivo", overrides: { torso: { liveIntegrity: 3 } } }), "torso");
+  const board = boardWith({ 1: elusive });
+  const target = selectTarget(attacker, board, false);
+  assert.equal(target.position, 1);
+  assert.equal(board[1], elusive);
+});
+
+test("elusivo: no intercambia con un aliado que tiene Baluarte (no puede moverse)", () => {
+  const elusive = onlyZone(fakeBattler({ trait: "elusivo", overrides: { torso: { liveIntegrity: 3 } } }), "torso");
+  const guardian = fakeBattler({ trait: "baluarte" });
+  const board = boardWith({ 1: elusive, 2: guardian });
+  const swap = elusivoSwap(board, 1);
+  assert.equal(swap, null);
+  assert.equal(board[1], elusive, "Baluarte no se puede mover, ni siquiera para salvar a un vecino");
+});
+
+test("elusivo: si el propio Elusivo tiene Baluarte, no intercambia (no puede moverse)", () => {
+  const elusiveBaluarte = onlyZone(fakeBattler({ trait: "elusivo", overrides: { torso: { liveIntegrity: 3 } } }), "torso");
+  elusiveBaluarte.card.identity.secondTrait = "baluarte"; // caso Anomalo con ambos rasgos
+  const ally = fakeBattler();
+  const board = boardWith({ 1: elusiveBaluarte, 2: ally });
+  assert.equal(elusivoSwap(board, 1), null);
+  assert.equal(board[1], elusiveBaluarte);
 });

@@ -5,7 +5,7 @@
 // consistente en los 4 casos, documentada aca, no una estrategia optima.
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { ZONES } from "../cardgen/zones.js";
-import { adjacentZones } from "./board.js";
+import { adjacentZones, elusivoSwap } from "./board.js";
 import { hasTrait } from "./traits.js";
 
 /** @param {{ unplatedOnly?: boolean, excludeResidue?: boolean }} [opts] - excludeResidue: rasgo
@@ -84,6 +84,11 @@ export function selectTarget(attacker, defenderBoard, lineOfSight = true) {
 
   const position = pickTargetPosition(reach, defenderBoard);
   if (position === null) return null; // hay rivales vivos, pero ninguno dentro del Alcance efectivo
+
+  // Elusivo (defensor): intercambia lugar con un aliado adyacente ANTES de elegir zona — asi el
+  // golpe cae sobre quien haya quedado parado ahi de verdad, no sobre quien fue elegido "de
+  // nombre". Tiene que pasar aca, antes del `defender = ...` de abajo, no despues del golpe.
+  elusivoSwap(defenderBoard, position);
 
   const defender = defenderBoard[position];
 

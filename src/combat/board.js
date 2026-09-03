@@ -5,16 +5,20 @@
 // reales, no construir el juego completo todavia.
 //
 // Explicitamente AFUERA de esta pasada (no modelado):
-//  - Empuje / movimiento — cada unidad SIEMPRE ataca, nunca se mueve. Se despliega una vez y
-//    queda fija en su posicion todo el combate. (Impulso/Escombros/Regente SI estan implementados
-//    — ver economy.js/simulateEconomy.js.)
+//  - Movimiento como fase general con eleccion del jugador — una unidad nunca decide moverse en
+//    vez de atacar. Lo que SI existe es movimiento como EFECTO de otra cosa: Arrollador/Arponero
+//    empujan o arrastran al defensor tras un golpe (pushBattler), Elusivo intercambia lugar con un
+//    aliado al ser el blanco elegido (elusivoSwap). Errante ("movimiento 2 posiciones por accion")
+//    sigue afuera a proposito: el Alcance de un tipo de dano NO depende de la posicion propia del
+//    atacante en este motor, asi que "moverse para encontrar objetivo" no resolveria nada real —
+//    es un rasgo que necesita eleccion real del jugador, misma categoria que Preciso.
 //  - La mayoria de los 58 rasgos como comportamiento de COMBATE siguen siendo solo sus efectos de
 //    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js/simulate.js: brutal,
 //    carnicero, ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo,
 //    reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente, sereno, flanqueador,
-//    avanzado, atalaya (combate) + abastecedor, leal (economia/despliegue, ver economy.js). El
-//    resto (movimiento real, turnos extra, legendarios, etc.) sigue pendiente — ver
-//    traits.test.js para el detalle de que esta cubierto.
+//    avanzado, atalaya, arrollador, arponero, inamovible, elusivo (combate) + abastecedor, leal
+//    (economia/despliegue, ver economy.js). El resto (turnos extra ya cubiertos en
+//    turnResolution.js, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { hasTrait, cardHasTrait } from "./traits.js";
@@ -96,6 +100,45 @@ export function estandarteBonusFor(battler, ownBoard) {
     if (ally && ally !== battler && !ally.fallen && !ally.collapsed && hasTrait(ally, "estandarte")) bonus += 1;
   }
   return bonus;
+}
+
+/** Empuje (Arrollador) y arrastre (Arponero) — primera pieza de Movimiento real que se
+ * implementa (ver el header del archivo: hasta ahora nada se movia). Solo estos dos rasgos y el
+ * intercambio de Elusivo (ver `elusivoSwap`) — no una fase de movimiento general con eleccion del
+ * jugador, eso sigue afuera. Inamovible/Baluarte bloquean AMBAS direcciones.
+ * @param {number} direction - +1 empuja (aleja, hacia numero de posicion mas alto), -1 arrastra
+ *   (acerca, hacia numero mas bajo).
+ * @returns {number|null} la nueva posicion si se movio, null si no paso nada (inmune, borde del
+ *   tablero, o casillero destino ocupado). */
+export function pushBattler(board, position, direction) {
+  const battler = board[position];
+  if (!battler) return null;
+  if (hasTrait(battler, "inamovible") || hasTrait(battler, "baluarte")) return null;
+  const to = position + direction;
+  if (!POSITIONS.includes(to) || board[to]) return null;
+  board[to] = battler;
+  board[position] = null;
+  return to;
+}
+
+/** Elusivo (comun): al ser elegido como blanco, intercambia posicion con un aliado ADYACENTE
+ * vivo, ANTES de que se elija la zona a golpear — asi el golpe termina cayendole a quien haya
+ * quedado parado ahi, no solo "de nombre". Ninguno de los dos lados del intercambio puede tener
+ * Baluarte ("no puede moverse"). Sin tope de usos: el rasgo no trae contrapartida de "una vez por
+ * ronda" en el catalogo. Se llama desde targeting.js, justo despues de resolver la posicion y
+ * antes de mirar zonas — por eso vive en board.js (topologia) y no en targeting.js/resolve.js. */
+export function elusivoSwap(board, position) {
+  const defender = board[position];
+  if (!defender || !hasTrait(defender, "elusivo") || hasTrait(defender, "baluarte")) return null;
+  for (const p of adjacentPositions(position)) {
+    const ally = board[p];
+    if (ally && ally !== defender && !ally.fallen && !ally.collapsed && !hasTrait(ally, "baluarte")) {
+      board[position] = ally;
+      board[p] = defender;
+      return { from: position, to: p };
+    }
+  }
+  return null;
 }
 
 /** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (Reflejo, Implacable). Se

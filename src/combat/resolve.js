@@ -5,6 +5,7 @@
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { ZONES } from "../cardgen/zones.js";
 import { selectTarget } from "./targeting.js";
+import { pushBattler } from "./board.js";
 import { hasTrait } from "./traits.js";
 
 export function effectiveFuerza(battler) {
@@ -227,6 +228,19 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
       const counterFuerza = effectiveFuerza(defender);
       applyDamageToZone(attacker, counterZone, counterFuerza);
       result.reflejo = { zone: counterZone, dmg: counterFuerza, attackerFell: attacker.fallen };
+    }
+  }
+
+  // Arrollador/Arponero (comunes): si el defensor sobrevivio, lo empujan o arrastran una posicion
+  // (pushBattler ya respeta Inamovible/Baluarte y no hace nada si el casillero destino esta
+  // ocupado o es el borde del tablero).
+  if (!defender.fallen && !defender.collapsed) {
+    if (hasTrait(attacker, "arrollador")) {
+      const to = pushBattler(defenderBoard, target.position, 1);
+      if (to !== null) result.pushed = { from: target.position, to };
+    } else if (hasTrait(attacker, "arponero")) {
+      const to = pushBattler(defenderBoard, target.position, -1);
+      if (to !== null) result.pulled = { from: target.position, to };
     }
   }
 
