@@ -11,10 +11,10 @@
 // rival se autogestiona su propia mano con la misma heuristica greedy del simulador headless.
 import { useEffect, useRef, useState } from "react";
 import { generateCard } from "../cardgen/card.js";
-import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, estandarteBonusFor, legalStationFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
-import { resolveAttack, checkCollapse, applyPostAttackTraits } from "../combat/resolve.js";
+import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, legalStationFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
+import { checkCollapse } from "../combat/resolve.js";
 import { buildTurnOrder } from "../combat/simulate.js";
-import { attemptMagicFallback } from "../combat/magicFallback.js";
+import { resolveTurn } from "../combat/turnResolution.js";
 import { tryReparar, REPARAR_COST } from "../combat/nucleoAbilities.js";
 import {
   gainImpulso,
@@ -318,47 +318,40 @@ export default function BoardPrototype({ onBack }) {
     const { battler, side } = entry;
     const defBoard = side === "A" ? state.boardB : state.boardA;
     const defNucleo = side === "A" ? state.nucleoB : state.nucleoA;
+    const ownBoard = side === "A" ? state.boardA : state.boardB;
 
-    // Cabeza rota + Magic: intenta la salida por Linaje antes de resolver (magicFallback.js).
-    let magicFallbackActive = false;
-    if (battler.activeType === "magic" && battler.zones.head.integrity <= 0) {
-      const ownBoard = side === "A" ? state.boardA : state.boardB;
-      const applied = attemptMagicFallback(battler, side, {
-        impulsoAvailable: side === "A" ? state.impulsoA : state.impulsoB,
-        escombrosAvailable: state.escombros[side],
-        ownBoard,
-      });
-      if (applied.ok) {
-        if (applied.impulsoSpent) {
-          if (side === "A") state.impulsoA -= applied.impulsoSpent;
-          else state.impulsoB -= applied.impulsoSpent;
-        }
-        if (applied.escombrosSpent) state.escombros[side] -= applied.escombrosSpent;
-        if (applied.kind === "cantera_torso" && applied.lethal) battler.strength += 2;
-        magicFallbackActive = true;
+    // resolveTurn (turnResolution.js) hace todo el ritual del turno: salida de Magic por Linaje,
+    // aura de Estandarte, Paciente/Sereno post-golpe, y repite el golpe si aplica Gemelo/Implacable
+    // — devuelve un golpe, o varios en esos casos.
+    const results = resolveTurn(battler, side, {
+      ownBoard,
+      defBoard,
+      defNucleo,
+      escombros: state.escombros,
+      getImpulso: () => (side === "A" ? state.impulsoA : state.impulsoB),
+      spendImpulso: (n) => { if (side === "A") state.impulsoA -= n; else state.impulsoB -= n; },
+      round: state.round,
+      nucleoShieldRounds: NUCLEO_SHIELD_ROUNDS,
+      lineOfSight: true,
+    });
+
+    for (const result of results) {
+      let line = `${battler.card.identity.name}: `;
+      if (result.kind === "no_target") line += "sin objetivo.";
+      else if (result.kind === "no_magic_head_broken") line += "no puede lanzar Magic (cabeza rota).";
+      else if (result.kind === "nucleo_shielded") line += "el escudo del Núcleo absorbe el golpe.";
+      else if (result.kind === "dodged") line += `${defBoard[result.position].card.identity.name} esquiva.`;
+      else if (result.kind === "hit_nucleo") line += `impacta el Núcleo rival por ${result.dmg}.`;
+      else {
+        const defender = defBoard[result.position];
+        line += `golpea a ${defender.card.identity.name} (${result.zones.join(" + ")})`;
+        if (result.plateChipped) line += " — rompe placa";
+        if (result.integrityDamage > 0) line += ` — ${result.integrityDamage} de daño`;
+        if (result.fell) line += " — ¡cae!";
+        line += ".";
       }
+      pushLog(line);
     }
-
-    const ownBoardForAura = side === "A" ? state.boardA : state.boardB;
-    const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
-    const result = resolveAttack(battler, defBoard, defNucleo, true, state.round <= NUCLEO_SHIELD_ROUNDS, magicFallbackActive, fuerzaBonus);
-    applyPostAttackTraits(battler, result); // paciente acumula, sereno se repara — solo si "no ataco"
-
-    let line = `${battler.card.identity.name}: `;
-    if (result.kind === "no_target") line += "sin objetivo.";
-    else if (result.kind === "no_magic_head_broken") line += "no puede lanzar Magic (cabeza rota).";
-    else if (result.kind === "nucleo_shielded") line += "el escudo del Núcleo absorbe el golpe.";
-    else if (result.kind === "dodged") line += `${defBoard[result.position].card.identity.name} esquiva.`;
-    else if (result.kind === "hit_nucleo") line += `impacta el Núcleo rival por ${result.dmg}.`;
-    else {
-      const defender = defBoard[result.position];
-      line += `golpea a ${defender.card.identity.name} (${result.zones.join(" + ")})`;
-      if (result.plateChipped) line += " — rompe placa";
-      if (result.integrityDamage > 0) line += ` — ${result.integrityDamage} de daño`;
-      if (result.fell) line += " — ¡cae!";
-      line += ".";
-    }
-    pushLog(line);
 
     if (state.nucleoA.hp <= 0) setWinner("B");
     else if (state.nucleoB.hp <= 0) setWinner("A");

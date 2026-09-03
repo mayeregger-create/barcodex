@@ -3,9 +3,10 @@
 // Impulso/Escombros/Regente reales en vez de desplegar el mazo entero de arranque — pasada
 // separada a proposito, para poder seguir comparando contra el baseline sin economia si hace
 // falta. Ver economy.js para las decisiones de diseno de cada recurso.
-import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, estandarteBonusFor, NUCLEO_BASE, POSITIONS } from "./board.js";
-import { resolveAttack, checkCollapse, applyPostAttackTraits } from "./resolve.js";
+import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, NUCLEO_BASE, POSITIONS } from "./board.js";
+import { checkCollapse } from "./resolve.js";
 import { buildTurnOrder } from "./simulate.js";
+import { resolveTurn } from "./turnResolution.js";
 import {
   gainImpulso,
   escombrosFromLoss,
@@ -16,7 +17,6 @@ import {
   IMPULSO_START,
   NUCLEO_SHIELD_ROUNDS,
 } from "./economy.js";
-import { attemptMagicFallback } from "./magicFallback.js";
 import { tryReparar } from "./nucleoAbilities.js";
 
 function clearFallenSlots(board, graveyard, escombros, sideKey) {
@@ -135,44 +135,41 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     const priorityFirst = round % 2 === 1 ? "A" : "B";
     const order = buildTurnOrder(boardA, boardB, priorityFirst);
 
-    // Fase 3/4 — acciones + resolucion (linea de tiro siempre activa, es la regla adoptada)
+    // Fase 3/4 — acciones + resolucion (linea de tiro siempre activa, es la regla adoptada).
+    // resolveTurn (turnResolution.js) hace todo el ritual por turno: salida de Magic por Linaje,
+    // aura de Estandarte, Paciente/Sereno post-golpe, y repite el golpe si aplica Gemelo/Implacable.
     for (const { battler, side } of order) {
       if (battler.fallen || battler.collapsed) continue;
       const defBoard = side === "A" ? boardB : boardA;
       const defNucleo = side === "A" ? nucleoB : nucleoA;
+      const ownBoard = side === "A" ? boardA : boardB;
 
-      // Cabeza rota + Magic: intenta la salida por Linaje ANTES de resolver el golpe — ver
-      // magicFallback.js. Si falla (recurso no disponible, o Injerto sin aliado adyacente), el
-      // golpe se resuelve igual que antes (resolveAttack corta solo por su cuenta).
-      let magicFallbackActive = false;
-      let fallbackKind = null;
-      if (battler.activeType === "magic" && battler.zones.head.integrity <= 0) {
-        const ownBoard = side === "A" ? boardA : boardB;
-        const applied = attemptMagicFallback(battler, side, {
-          impulsoAvailable: side === "A" ? impulsoA : impulsoB,
-          escombrosAvailable: escombros[side],
-          ownBoard,
-        });
-        stats.magicFallback.attempts += 1;
-        if (applied.ok) {
-          stats.magicFallback.ok += 1;
-          stats.magicFallback.byKind[applied.kind] = (stats.magicFallback.byKind[applied.kind] || 0) + 1;
-          if (applied.impulsoSpent) { if (side === "A") impulsoA -= applied.impulsoSpent; else impulsoB -= applied.impulsoSpent; }
-          if (applied.escombrosSpent) escombros[side] -= applied.escombrosSpent;
-          if (applied.kind === "cantera_torso" && applied.lethal) battler.strength += 2; // el ultimo hechizo pega mas fuerte
-          magicFallbackActive = true;
-          fallbackKind = applied.kind;
-        } else {
-          stats.magicFallback.failed += 1;
+      const results = resolveTurn(battler, side, {
+        ownBoard,
+        defBoard,
+        defNucleo,
+        escombros,
+        getImpulso: () => (side === "A" ? impulsoA : impulsoB),
+        spendImpulso: (n) => { if (side === "A") impulsoA -= n; else impulsoB -= n; },
+        round,
+        nucleoShieldRounds,
+        lineOfSight: round > graceRounds,
+      });
+
+      for (const result of results) {
+        if (result.magicFallbackAttempted) {
+          stats.magicFallback.attempts += 1;
+          if (result.magicFallbackKind) {
+            stats.magicFallback.ok += 1;
+            stats.magicFallback.byKind[result.magicFallbackKind] = (stats.magicFallback.byKind[result.magicFallbackKind] || 0) + 1;
+          } else {
+            stats.magicFallback.failed += 1;
+          }
         }
+        log.push({ round, side, card: battler.card.identity.displayName, ...result });
+        if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
       }
 
-      const ownBoardForAura = side === "A" ? boardA : boardB;
-      const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
-      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds, magicFallbackActive, fuerzaBonus);
-      applyPostAttackTraits(battler, result); // paciente acumula, sereno se repara — solo si "no ataco"
-      log.push({ round, side, card: battler.card.identity.displayName, magicFallbackKind: fallbackKind, ...result });
-      if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
       if (nucleoA.hp <= 0) { winner = "B"; break; }
       if (nucleoB.hp <= 0) { winner = "A"; break; }
     }

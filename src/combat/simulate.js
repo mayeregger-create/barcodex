@@ -8,15 +8,26 @@ import { autoDeploy, aliveBattlers, backfillFromReserve, NUCLEO_BASE, POSITIONS 
 import { resolveAttack, checkCollapse, applyPostAttackTraits } from "./resolve.js";
 import { hasTrait } from "./traits.js";
 
+/** Frenetico (raro): "actua dos veces por ronda" — se modela dandole una SEGUNDA entrada en la
+ * cola de turno (no un segundo golpe dentro de la misma entrada, eso es Gemelo — ver
+ * turnResolution.js). Al tener la misma Iniciativa, el orden normal las deja adyacentes la
+ * enorme mayoria de las veces; cada entrada dispara UN resolveTurn(), y turnResolution.js sabe
+ * aplicarle la mitad de Fuerza a cada una. */
+function taggedWithFrenetico(board, side) {
+  const tagged = [];
+  for (const b of aliveBattlers(board)) {
+    tagged.push({ battler: b, side });
+    if (hasTrait(b, "frenetico")) tagged.push({ battler: b, side });
+  }
+  return tagged;
+}
+
 /** Fulminante (raro) siempre va primero, Paciente (raro) siempre va ultimo — ambos ganan a la
  * Iniciativa, que solo desempata entre battlers "normales" (o entre 2 Fulminantes, o entre 2
  * Pacientes). Doc de cada rasgo: Fulminante "actua antes que cualquier otra unidad del tablero",
  * Paciente "actua siempre ultimo" (su contrapartida por acumular Fuerza, ver resolve.js). */
 export function buildTurnOrder(boardA, boardB, priorityFirst) {
-  const tagged = [
-    ...aliveBattlers(boardA).map((b) => ({ battler: b, side: "A" })),
-    ...aliveBattlers(boardB).map((b) => ({ battler: b, side: "B" })),
-  ];
+  const tagged = [...taggedWithFrenetico(boardA, "A"), ...taggedWithFrenetico(boardB, "B")];
   tagged.sort((x, y) => {
     const fx = hasTrait(x.battler, "fulminante") ? 1 : 0;
     const fy = hasTrait(y.battler, "fulminante") ? 1 : 0;

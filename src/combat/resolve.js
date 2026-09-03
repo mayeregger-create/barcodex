@@ -165,8 +165,13 @@ function weakestLivingZone(battler) {
  * @param {number} [fuerzaBonus] - default 0: bonos de Fuerza que dependen de TOPOLOGIA de tablero
  *   (hoy solo el aura de "estandarte") — resolve.js no conoce el tablero propio del atacante, asi
  *   que el llamador lo calcula (ver board.js#estandarteBonusFor) y lo pasa ya resuelto.
+ * @param {number} [fuerzaScale] - default 1: multiplicador sobre la Fuerza ya sumada (bonus
+ *   incluido) — 0.5 para Gemelo/Frenetico ("cada golpe/accion con la mitad de Fuerza"), redondeado
+ *   para arriba como el resto del daño reducido del motor (doc §3.1, mismo criterio que Blunt sin
+ *   placa). Vive aca y no como una resta aparte para que Vengativo/Paciente (que ya suman a la
+ *   Fuerza base) tambien queden a mitad cuando corresponda, en vez de escaparse del split.
  */
-export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false, magicFallbackActive = false, fuerzaBonus = 0) {
+export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false, magicFallbackActive = false, fuerzaBonus = 0, fuerzaScale = 1) {
   if (attacker.activeType === "magic" && attacker.zones.head.integrity <= 0 && !magicFallbackActive) {
     return { kind: "no_magic_head_broken" };
   }
@@ -174,7 +179,7 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
   const target = selectTarget(attacker, defenderBoard, lineOfSight);
   if (!target) return { kind: "no_target" };
 
-  const fuerza = effectiveFuerza(attacker) + fuerzaBonus;
+  const fuerza = Math.ceil((effectiveFuerza(attacker) + fuerzaBonus) * fuerzaScale);
 
   if (attacker.activeType === "magic") {
     applyDamageToZone(attacker, "head", 1); // costo de lanzar (doc §3.1) — SIEMPRE, haya o no Nucleo de por medio

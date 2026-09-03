@@ -1,10 +1,10 @@
 // src/combat/traits.test.js
-// Verifica el subconjunto de rasgos con comportamiento de combate implementado en esta sesion y la
-// siguiente: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
+// Verifica el subconjunto de rasgos con comportamiento de combate implementado en esta sesion y
+// las siguientes: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
 // estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
-// sereno, flanqueador, avanzado, atalaya (motor de combate) + abastecedor, leal (economia) +
-// Reparar (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada
-// escenario.
+// sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico (motor de combate) +
+// abastecedor, leal (economia) + Reparar (Nucleo). Todo con battlers sinteticos (no generateCard)
+// para control exacto de cada escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits } from "./resolve.js";
@@ -13,6 +13,7 @@ import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, leg
 import { escombrosFromDeploy, effectiveDeployCost, commitFromHand } from "./economy.js";
 import { findMostDamaged, tryReparar, REPARAR_COST } from "./nucleoAbilities.js";
 import { buildTurnOrder } from "./simulate.js";
+import { resolveTurn } from "./turnResolution.js";
 
 const ZONE_BASE = { head: 4, torso: 6, armMain: 5, armOff: 5, legs: 5 };
 
@@ -543,4 +544,97 @@ test("sin atalaya: Pierce no alcanza la posicion 1", () => {
   const defenderAt1 = onlyZone(fakeBattler(), "torso");
   const target = selectTarget(attacker, boardWith({ 1: defenderAt1 }), false);
   assert.equal(target, null);
+});
+
+// ---------- gemelo / implacable / frenetico (turnResolution.js) ----------
+
+function fakeCtx({ ownBoard, defBoard, escombros = { A: 0, B: 0 }, impulso = 0, round = 10 } = {}) {
+  let localImpulso = impulso;
+  return {
+    ownBoard,
+    defBoard,
+    defNucleo: { hp: 20 },
+    escombros,
+    getImpulso: () => localImpulso,
+    spendImpulso: (n) => { localImpulso -= n; },
+    round,
+    nucleoShieldRounds: 3,
+    lineOfSight: false,
+  };
+}
+
+test("gemelo: ataca dos veces en el mismo turno, cada golpe a la mitad de Fuerza", () => {
+  const attacker = fakeBattler({ trait: "gemelo", activeType: "cut", strength: 4 }); // tope cut=6, sin clamp
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].integrityDamage, 2); // ceil(4*0.5)
+  assert.equal(results[1].integrityDamage, 2);
+  assert.equal(defender.zones.torso.integrity, 6); // 10 - 2 - 2
+});
+
+test("gemelo: si el primer golpe tumba al unico defensor, el segundo sigue de largo al Nucleo (no revienta)", () => {
+  const attacker = fakeBattler({ trait: "gemelo", activeType: "cut", strength: 10 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 1 } } }), "torso");
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].kind, "hit_unit");
+  assert.equal(defender.fallen, true);
+  assert.equal(results[1].kind, "hit_nucleo", "sin defensores en pie, cualquier tipo alcanza el Nucleo (doc §2.2) — el 2do golpe de Gemelo no se pierde");
+});
+
+test("implacable: si rompe una zona, ataca de nuevo a Fuerza completa (1 vez por ronda)", () => {
+  const attacker = fakeBattler({ trait: "implacable", activeType: "cut", strength: 5 });
+  const defender = fakeBattler({ overrides: { armOff: { liveIntegrity: 1 }, head: { liveIntegrity: 10 } } });
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 2, "un golpe extra exactamente — no encadena mas de 1 vez por ronda");
+  assert.equal(defender.zones.armOff.integrity, 0);
+  assert.equal(defender.zones.armMain.integrity, 0, "el golpe extra (Fuerza 5 completa) tambien rompio armMain");
+  assert.equal(attacker.implacableUsedThisRound, true);
+});
+
+test("implacable: sin romper ninguna zona, no ataca de nuevo", () => {
+  const attacker = fakeBattler({ trait: "implacable", activeType: "cut", strength: 1 });
+  const defender = fakeBattler({ overrides: { armOff: { liveIntegrity: 10 }, head: { liveIntegrity: 10 } } });
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 1);
+});
+
+test("implacable: no dispara si ya se uso esta ronda", () => {
+  const attacker = fakeBattler({ trait: "implacable", activeType: "cut", strength: 5 });
+  attacker.implacableUsedThisRound = true;
+  const defender = fakeBattler({ overrides: { armOff: { liveIntegrity: 1 }, head: { liveIntegrity: 10 } } });
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 1);
+});
+
+test("frenetico: recibe una segunda entrada en la cola de turno", () => {
+  const f = fakeBattler({ trait: "frenetico", initiative: 5 });
+  const normal = fakeBattler({ initiative: 3 });
+  const order = buildTurnOrder(boardWith({ 1: f }), boardWith({ 1: normal }), "A");
+  assert.equal(order.length, 3);
+  assert.equal(order.filter((e) => e.battler === f).length, 2);
+});
+
+test("frenetico: cada accion (via resolveTurn) usa la mitad de Fuerza", () => {
+  const attacker = fakeBattler({ trait: "frenetico", activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 1, "frenetico no duplica DENTRO de resolveTurn, eso lo hace la cola de turno");
+  assert.equal(results[0].integrityDamage, 2); // ceil(4*0.5)
+});
+
+test("sin gemelo/frenetico: un solo golpe a Fuerza completa", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const ctx = fakeCtx({ ownBoard: boardWith({ 1: attacker }), defBoard: boardWith({ 1: defender }) });
+  const results = resolveTurn(attacker, "A", ctx);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].integrityDamage, 4);
 });

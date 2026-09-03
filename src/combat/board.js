@@ -69,6 +69,7 @@ export function makeBattler(generated) {
     remachadoUsed: false, // rasgo "remachado": 1 vez por partida, una placa rota se repone
     reflejoUsedThisRound: false, // rasgo "reflejo": 1 vez por ronda, contraataca si sobrevive a un golpe
     pacienteStacks: 0, // rasgo "paciente": +2 Fuerza acumulativo por cada ronda que no ataca
+    implacableUsedThisRound: false, // rasgo "implacable": 1 vez por ronda, ataca de nuevo si rompio una zona
   };
 }
 
@@ -97,11 +98,13 @@ export function estandarteBonusFor(battler, ownBoard) {
   return bonus;
 }
 
-/** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (hoy solo Reflejo). Se llama
- * en la Fase 1, para ambos bandos. */
+/** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (Reflejo, Implacable). Se
+ * llama en la Fase 1, para ambos bandos. */
 export function resetRoundFlags(board) {
   for (const p of POSITIONS) {
-    if (board[p]) board[p].reflejoUsedThisRound = false;
+    if (!board[p]) continue;
+    board[p].reflejoUsedThisRound = false;
+    board[p].implacableUsedThisRound = false;
   }
 }
 
