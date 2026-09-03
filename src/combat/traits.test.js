@@ -3,8 +3,8 @@
 // las siguientes: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
 // estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
 // sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico, arrollador, arponero,
-// inamovible, elusivo (motor de combate) + abastecedor, leal (economia) + Reparar (Nucleo). Todo
-// con battlers sinteticos (no generateCard) para control exacto de cada escenario.
+// inamovible, elusivo, devastador (motor de combate) + abastecedor, leal (economia) + Reparar
+// (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits } from "./resolve.js";
@@ -741,4 +741,46 @@ test("elusivo: si el propio Elusivo tiene Baluarte, no intercambia (no puede mov
   const board = boardWith({ 1: elusiveBaluarte, 2: ally });
   assert.equal(elusivoSwap(board, 1), null);
   assert.equal(board[1], elusiveBaluarte);
+});
+
+// ---------- devastador ----------
+
+test("devastador: Cut contra placa la rompe Y ademas pasa el dano completo", () => {
+  const attacker = fakeBattler({ trait: "devastador", activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 1 } } }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.plate, 0);
+  assert.equal(defender.zones.torso.integrity, 6); // 10 - 4 (Fuerza completa, no solo romper placa)
+  assert.equal(result.hits[0].plateChipped, true);
+  assert.equal(result.hits[0].integrityDamage, 4);
+});
+
+test("sin devastador: Cut contra placa solo la rompe, cero dano de Integridad", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 1 } } }), "torso");
+  resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.integrity, 10);
+});
+
+test("devastador: Blunt contra placa pasa la mitad de Fuerza en vez del fijo de 1", () => {
+  const attacker = fakeBattler({ trait: "devastador", activeType: "blunt", strength: 5 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 1 } } }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.plate, 0);
+  assert.equal(defender.zones.torso.integrity, 7); // 10 - ceil(5/2)=3
+  assert.equal(result.hits[0].integrityDamage, 3);
+});
+
+test("devastador: Alcance -1, se queda solo con la posicion mas cercana de su tipo", () => {
+  const attacker = fakeBattler({ trait: "devastador", activeType: "cut" }); // cut normal: alcance 1-2
+  const farDefender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 5 } } }), "torso");
+  const target = selectTarget(attacker, boardWith({ 2: farDefender }), false); // solo hay alguien en pos.2
+  assert.equal(target, null, "devastador con Cut solo alcanza pos.1, no deberia encontrar a alguien parado en pos.2");
+});
+
+test("sin devastador: Cut normal SI alcanza la posicion 2", () => {
+  const attacker = fakeBattler({ activeType: "cut" });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 5 } } }), "torso");
+  const target = selectTarget(attacker, boardWith({ 2: defender }), false);
+  assert.equal(target.position, 2);
 });

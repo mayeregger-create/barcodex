@@ -32,10 +32,16 @@ function weakest(zones, battler) {
 
 /** Alcance efectivo de un atacante — normalmente el de su tipo de dano, pero Atalaya lo sube a
  * "todo el tablero" (doc: "Alcance +1", que en una linea de 3 posiciones equivale a poder llegar a
- * cualquiera, incluida la posicion 1 que ningun otro tipo con Alcance corto toca desde atras). */
+ * cualquiera, incluida la posicion 1 que ningun otro tipo con Alcance corto toca desde atras).
+ * Devastador hace lo inverso ("Alcance -1"): se queda solo con la posicion mas cercana de su
+ * Alcance normal — interpretacion propia, simetrica a la de Atalaya (que ya tomo "+1" como "toda
+ * la linea"), asi que "-1" es "recorta a la posicion mas cercana disponible". Si ambos rasgos
+ * coincidieran en la misma carta (Anomalo), Atalaya gana — se chequea primero. */
 function effectiveReach(attacker) {
   if (hasTrait(attacker, "atalaya")) return [1, 2, 3];
-  return DAMAGE_TYPES[attacker.activeType].reach;
+  const base = DAMAGE_TYPES[attacker.activeType].reach;
+  if (hasTrait(attacker, "devastador")) return [Math.min(...base)];
+  return base;
 }
 
 /** Posicion enemiga alcanzable + con alguien vivo, mas cercana dentro del Alcance. */

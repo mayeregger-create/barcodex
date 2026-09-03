@@ -128,13 +128,23 @@ function hitZone(attacker, defender, zoneName, fuerza) {
       applyDamageToZone(defender, zoneName, 1);
       return { plateChipped: true, integrityDamage: before - zone.integrity };
     }
+    if (hasTrait(attacker, "devastador")) {
+      // Devastador: "el dano se aplica a la zona Y a la placa a la vez" — rompe la placa igual que
+      // siempre, pero ADEMAS pasa el dano completo que Cut le haria a una zona desnuda, en vez de
+      // perderlo. Contrapartida ya cobrada arriba (Alcance -1, ver targeting.js#effectiveReach).
+      const before = zone.integrity;
+      applyDamageToZone(defender, zoneName, effFuerza);
+      return { plateChipped: true, integrityDamage: before - zone.integrity };
+    }
     return { plateChipped: true, integrityDamage: 0 };
   }
   if (activeType === "blunt") {
     zone.plate = Math.max(0, zone.plate - 1);
     tryRemachado(defender, zone);
+    // Devastador: el golpe "reducido" de Blunt (mitad de Fuerza) pasa entero en vez del fijo de 1.
+    const dmg = hasTrait(attacker, "devastador") ? Math.ceil(effFuerza / 2) : 1; // fijo (doc §5.3), no escala con Fuerza salvo Devastador
     const before = zone.integrity;
-    applyDamageToZone(defender, zoneName, 1); // fijo (doc §5.3), no escala con Fuerza
+    applyDamageToZone(defender, zoneName, dmg);
     return { plateChipped: true, integrityDamage: before - zone.integrity };
   }
   // pierce sin Certero nunca llega aca: selectTarget() solo le da zonas sin placa.

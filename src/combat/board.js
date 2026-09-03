@@ -16,9 +16,9 @@
 //    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js/simulate.js: brutal,
 //    carnicero, ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo,
 //    reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente, sereno, flanqueador,
-//    avanzado, atalaya, arrollador, arponero, inamovible, elusivo (combate) + abastecedor, leal
-//    (economia/despliegue, ver economy.js). El resto (turnos extra ya cubiertos en
-//    turnResolution.js, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle.
+//    avanzado, atalaya, arrollador, arponero, inamovible, elusivo, devastador (combate) +
+//    abastecedor, leal (economia/despliegue, ver economy.js). El resto (turnos extra ya cubiertos
+//    en turnResolution.js, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { hasTrait, cardHasTrait } from "./traits.js";
