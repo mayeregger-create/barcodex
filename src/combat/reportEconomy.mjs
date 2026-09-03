@@ -85,6 +85,7 @@ const impulsoLeftoverPerRound = { A: [], B: [] };
 const escombrosFinal = { A: [], B: [] };
 const deckTotalCosts = [];
 let overCapCount = 0;
+const repararUsedTotal = { A: 0, B: 0 };
 
 for (let i = 0; i < N; i++) {
   const deckA = compliantDeck(i * 104729 + 1);
@@ -105,6 +106,7 @@ for (let i = 0; i < N; i++) {
     if (result.stats.handEmptyRound[side] !== null) handEmptyRounds[side].push(result.stats.handEmptyRound[side]);
     impulsoLeftoverPerRound[side].push(result.stats.impulsoLeftoverSum[side] / result.rounds);
     escombrosFinal[side].push(result.escombros[side]);
+    repararUsedTotal[side] += result.stats.repararUsed[side];
   }
 }
 
@@ -131,6 +133,7 @@ console.log(`Impulso promedio sin gastar al cierre de cada ronda (0 = curva perf
 
 console.log("\n--- Escombros acumulados al cierre de la partida ---");
 console.log(`Media: A ${mean(escombrosFinal.A).toFixed(2)}, B ${mean(escombrosFinal.B).toFixed(2)}  ·  max visto: A ${Math.max(...escombrosFinal.A)}, B ${Math.max(...escombrosFinal.B)}`);
+console.log(`Reparar usado (2 Escombros c/u): A ${repararUsedTotal.A} veces en ${N} partidas (${(repararUsedTotal.A / N).toFixed(2)}/partida), B ${repararUsedTotal.B} (${(repararUsedTotal.B / N).toFixed(2)}/partida)`);
 
 console.log("\n--- ¿Hace falta un tope de curva de mazo? ---");
 console.log(`Suma de Coste por mazo (mazos de ${DECK_SIZE} cartas, con cobertura §14.2) — media ${mean(deckTotalCosts).toFixed(1)}, min ${Math.min(...deckTotalCosts)}, max ${Math.max(...deckTotalCosts)}`);

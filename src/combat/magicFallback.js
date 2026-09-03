@@ -19,14 +19,13 @@
 // Si el Linaje no tiene salida (no deberia pasar, los 5 Linajes existentes ya tienen una) o la
 // salida requiere un recurso que no esta disponible, `attemptMagicFallback` devuelve `{ok:false}`
 // y el llamador debe tratarlo igual que "no_magic_head_broken".
-import { POSITIONS } from "./board.js";
+import { positionOf, adjacentPositions } from "./board.js";
 import { applyDamageToZone } from "./resolve.js";
 
 function findAdjacentAllyWithHead(attacker, ownBoard) {
-  const myPos = POSITIONS.find((p) => ownBoard[p] === attacker);
-  if (myPos === undefined) return null;
-  for (const p of [myPos - 1, myPos + 1]) {
-    if (!POSITIONS.includes(p)) continue;
+  const myPos = positionOf(attacker, ownBoard);
+  if (myPos === null) return null;
+  for (const p of adjacentPositions(myPos)) {
     const ally = ownBoard[p];
     if (ally && ally !== attacker && !ally.fallen && !ally.collapsed && ally.zones.head.integrity > 0) return ally;
   }

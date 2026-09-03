@@ -11,12 +11,15 @@
 // rival se autogestiona su propia mano con la misma heuristica greedy del simulador headless.
 import { useEffect, useRef, useState } from "react";
 import { generateCard } from "../cardgen/card.js";
-import { makeBattler, placeCard, backfillFromReserve, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
+import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, estandarteBonusFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
 import { resolveAttack, checkCollapse } from "../combat/resolve.js";
 import { attemptMagicFallback } from "../combat/magicFallback.js";
+import { tryReparar, REPARAR_COST } from "../combat/nucleoAbilities.js";
 import {
   gainImpulso,
   escombrosFromLoss,
+  escombrosFromDeploy,
+  effectiveDeployCost,
   pickRegente,
   nucleoBonusFromRegente,
   commitFromHand,
@@ -45,14 +48,22 @@ function beginRound(state) {
   state.round += 1;
   state.impulsoA = gainImpulso(state.impulsoA);
   state.impulsoB = gainImpulso(state.impulsoB);
+  resetRoundFlags(state.boardA); // rasgo "reflejo": vuelve a estar disponible cada ronda
+  resetRoundFlags(state.boardB);
 
-  const resB = commitFromHand(state.handB, state.impulsoB);
+  const resB = commitFromHand(state.handB, state.impulsoB, state.regenteB.identity.class); // "leal"
   state.handB = resB.hand;
   state.impulsoB = resB.impulsoLeft;
-  for (const card of resB.committed) placeCard(card, state.boardB, state.reserveB);
+  for (const card of resB.committed) {
+    placeCard(card, state.boardB, state.reserveB);
+    state.escombros.B += escombrosFromDeploy(card); // "abastecedor"
+  }
 
   backfillFromReserve(state.boardA, state.reserveA);
   backfillFromReserve(state.boardB, state.reserveB);
+
+  // Habilidad de Nucleo (Reparar, 2 Escombros): el rival la usa apenas puede pagarla.
+  tryReparar(state.boardB, state.escombros, "B");
 
   state.phase = "deploy";
   state.queue = [];
@@ -74,6 +85,8 @@ function freshMatch() {
   const state = {
     phase: "deploy",
     round: 0,
+    regenteA,
+    regenteB,
     handA,
     handB,
     boardA,
@@ -84,7 +97,7 @@ function freshMatch() {
     nucleoB: { hp: NUCLEO_BASE + nucleoBonusFromRegente(regenteB) },
     impulsoA: IMPULSO_START,
     impulsoB: IMPULSO_START,
-    escombros: { A: 0, B: 0 },
+    escombros: { A: escombrosFromDeploy(regenteA), B: escombrosFromDeploy(regenteB) },
     queue: [],
   };
   beginRound(state);
@@ -229,9 +242,11 @@ export default function BoardPrototype({ onBack }) {
     if (s.phase !== "deploy" || selectedHand === null || s.boardA[position]) return;
     const card = s.handA[selectedHand];
     if (!DAMAGE_TYPES[card.combat.damageTypeActive].station.includes(position)) return; // no legal aca
-    if (card.cost > s.impulsoA) return; // no alcanza el Impulso de esta ronda
+    const cost = effectiveDeployCost(card, s.regenteA.identity.class); // "leal": -2 si comparte Clase con el Regente
+    if (cost > s.impulsoA) return; // no alcanza el Impulso de esta ronda
     s.boardA[position] = makeBattler(card);
-    s.impulsoA -= card.cost;
+    s.impulsoA -= cost;
+    s.escombros.A += escombrosFromDeploy(card); // "abastecedor"
     s.handA = s.handA.filter((_, i) => i !== selectedHand);
     setSelectedHand(null);
     rerender();
@@ -244,11 +259,21 @@ export default function BoardPrototype({ onBack }) {
     const s = stateRef.current;
     if (s.phase !== "deploy" || selectedHand === null) return;
     const card = s.handA[selectedHand];
-    if (card.cost > s.impulsoA) return;
+    const cost = effectiveDeployCost(card, s.regenteA.identity.class);
+    if (cost > s.impulsoA) return;
     s.reserveA.push(card);
-    s.impulsoA -= card.cost;
+    s.impulsoA -= cost;
+    s.escombros.A += escombrosFromDeploy(card);
     s.handA = s.handA.filter((_, i) => i !== selectedHand);
     setSelectedHand(null);
+    rerender();
+  };
+
+  /** Habilidad de Nucleo: repara 1 de Integridad a la zona propia mas dañada por 2 Escombros. */
+  const useReparar = () => {
+    const s = stateRef.current;
+    if (s.phase !== "deploy") return;
+    tryReparar(s.boardA, s.escombros, "A");
     rerender();
   };
 
@@ -318,7 +343,9 @@ export default function BoardPrototype({ onBack }) {
       }
     }
 
-    const result = resolveAttack(battler, defBoard, defNucleo, true, state.round <= NUCLEO_SHIELD_ROUNDS, magicFallbackActive);
+    const ownBoardForAura = side === "A" ? state.boardA : state.boardB;
+    const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
+    const result = resolveAttack(battler, defBoard, defNucleo, true, state.round <= NUCLEO_SHIELD_ROUNDS, magicFallbackActive, fuerzaBonus);
 
     let line = `${battler.card.identity.name}: `;
     if (result.kind === "no_target") line += "sin objetivo.";
@@ -348,7 +375,8 @@ export default function BoardPrototype({ onBack }) {
   // esta inspeccionando — cual de las dos manda cuando ambas podrian coexistir no pasa, se
   // excluyen entre si (elegir una carta de mano cierra la inspeccion y viceversa).
   const handCard = selectedHand !== null ? s.handA[selectedHand] : null;
-  const affordable = handCard ? handCard.cost <= s.impulsoA : true;
+  const handCardCost = handCard ? effectiveDeployCost(handCard, s.regenteA.identity.class) : null;
+  const affordable = handCard ? handCardCost <= s.impulsoA : true;
   const inspectedBattler = inspecting ? (inspecting.side === "A" ? s.boardA : s.boardB)[inspecting.position] : null;
   const activeType = handCard?.combat.damageTypeActive || inspectedBattler?.activeType;
   const legalOwnPositions = handCard && affordable ? DAMAGE_TYPES[handCard.combat.damageTypeActive].station : handCard ? [] : null;
@@ -379,6 +407,16 @@ export default function BoardPrototype({ onBack }) {
         <span>Impulso: {s.impulsoA}/{IMPULSO_CAP}</span>
         <span>Escombros: {s.escombros.A}</span>
         {s.reserveA.length > 0 && <span>Reserva: {s.reserveA.length}</span>}
+        {s.phase === "deploy" && (
+          <button
+            type="button"
+            className="board-proto-reparar-btn"
+            onClick={useReparar}
+            disabled={s.escombros.A < REPARAR_COST}
+          >
+            Reparar ({REPARAR_COST})
+          </button>
+        )}
       </div>
 
       <div className="board-grid-row">
@@ -412,7 +450,9 @@ export default function BoardPrototype({ onBack }) {
       {(handCard || inspectedBattler) && (
         <div className="board-proto-selection">
           <span>
-            {handCard ? `${handCard.identity.name} (${TYPE_LABEL[handCard.combat.damageTypeActive]}) · Coste ${handCard.cost}` : `${inspectedBattler.card.identity.name} (${TYPE_LABEL[inspectedBattler.activeType]})`}
+            {handCard
+              ? `${handCard.identity.name} (${TYPE_LABEL[handCard.combat.damageTypeActive]}) · Coste ${handCardCost}${handCardCost !== handCard.cost ? ` (leal, antes ${handCard.cost})` : ""}`
+              : `${inspectedBattler.card.identity.name} (${TYPE_LABEL[inspectedBattler.activeType]})`}
             {threat?.nucleoOpen && " — ¡línea abierta al Núcleo!"}
             {handCard && !affordable && " — no alcanza el Impulso"}
           </span>
@@ -436,18 +476,21 @@ export default function BoardPrototype({ onBack }) {
       {s.phase === "deploy" ? (
         <div className="board-hand pixel-scroll">
           {s.handA.length === 0 && <div className="board-hand-empty">Mano vacía.</div>}
-          {s.handA.map((card, i) => (
-            <button
-              key={card.code}
-              type="button"
-              className={`board-hand-card${i === selectedHand ? " board-hand-card--selected" : ""}${card.cost > s.impulsoA ? " board-hand-card--unaffordable" : ""}`}
-              onClick={() => { setInspecting(null); setSelectedHand(i === selectedHand ? null : i); }}
-            >
-              <span className="board-hand-card-cost">{card.cost}</span>
-              <span className="board-hand-card-name">{card.identity.name}</span>
-              <span className="board-hand-card-type">{TYPE_LABEL[card.combat.damageTypeActive]}</span>
-            </button>
-          ))}
+          {s.handA.map((card, i) => {
+            const cost = effectiveDeployCost(card, s.regenteA.identity.class);
+            return (
+              <button
+                key={card.code}
+                type="button"
+                className={`board-hand-card${i === selectedHand ? " board-hand-card--selected" : ""}${cost > s.impulsoA ? " board-hand-card--unaffordable" : ""}`}
+                onClick={() => { setInspecting(null); setSelectedHand(i === selectedHand ? null : i); }}
+              >
+                <span className="board-hand-card-cost">{cost}</span>
+                <span className="board-hand-card-name">{card.identity.name}</span>
+                <span className="board-hand-card-type">{TYPE_LABEL[card.combat.damageTypeActive]}</span>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="board-proto-log pixel-scroll">

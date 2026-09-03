@@ -6,13 +6,17 @@
 //
 // Explicitamente AFUERA de esta pasada (no modelado):
 //  - Empuje / movimiento — cada unidad SIEMPRE ataca, nunca se mueve. Se despliega una vez y
-//    queda fija en su posicion todo el combate.
-//  - Escombros / habilidades activadas del Nucleo, e inversion de Regente (el Nucleo arranca en
-//    un flat de 8, sin el bonus de Integridad de torso del Regente).
-//  - Los 58 rasgos como comportamiento de COMBATE (solo sus efectos de generacion, ya aplicados
-//    por cardgen, quedan reflejados en los numeros de la carta).
+//    queda fija en su posicion todo el combate. (Impulso/Escombros/Regente SI estan implementados
+//    — ver economy.js/simulateEconomy.js.)
+//  - La mayoria de los 58 rasgos como comportamiento de COMBATE siguen siendo solo sus efectos de
+//    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js: brutal, carnicero,
+//    ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo, reflejo
+//    (combate) + abastecedor, leal (economia/despliegue, ver economy.js). El resto (movimiento,
+//    turnos extra, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle de que
+//    esta cubierto.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
+import { hasTrait } from "./traits.js";
 
 export const POSITIONS = [1, 2, 3];
 export const NUCLEO_BASE = 8;
@@ -32,11 +36,25 @@ export function adjacentZones(zone) {
   return ADJACENCY[zone] || [];
 }
 
+/** Posiciones de tablero adyacentes a `position` (topologia lineal 1-2-3, la misma que usan
+ * Estacion/Alcance) — para auras y rasgos que miran al vecino, no al cuerpo propio. */
+export function adjacentPositions(position) {
+  return POSITIONS.filter((p) => Math.abs(p - position) === 1);
+}
+
+/** En que posicion de `board` esta `battler` — null si no esta ahi. Compartido entre los rasgos
+ * que necesitan ubicarse a si mismos para mirar a sus vecinos (Estandarte, Injerto en
+ * magicFallback.js). */
+export function positionOf(battler, board) {
+  const found = POSITIONS.find((p) => board[p] === battler);
+  return found === undefined ? null : found;
+}
+
 /** Arma un battler de combate a partir de una carta generada (cardgen/card.js#generateCard). */
 export function makeBattler(generated) {
   const zones = {};
   for (const z of ZONES) {
-    zones[z] = { ...generated.zones[z], broken: generated.zones[z].integrity <= 0 };
+    zones[z] = { ...generated.zones[z], broken: generated.zones[z].integrity <= 0, everPlated: generated.zones[z].plate > 0 };
   }
   return {
     card: generated,
@@ -47,7 +65,31 @@ export function makeBattler(generated) {
     fallen: false, // torso a 0 — "muerte", se saca del tablero de inmediato
     collapsed: false, // ambos brazos rotos, o piernas + brazo principal — se retira a Caidos en Fase 5
     weaponSwapped: false, // brazo principal roto, paso a brazo secundario (doc §4.2)
+    remachadoUsed: false, // rasgo "remachado": 1 vez por partida, una placa rota se repone
+    reflejoUsedThisRound: false, // rasgo "reflejo": 1 vez por ronda, contraataca si sobrevive a un golpe
   };
+}
+
+/** Aura del rasgo "estandarte": +1 Fuerza por cada aliado ADYACENTE (no uno mismo) que lo tenga.
+ * Vive aca (no en resolve.js) porque necesita el tablero propio para ubicar vecinos — resolve.js
+ * no sabe de topologia de tablero, solo de zonas de un battler. */
+export function estandarteBonusFor(battler, ownBoard) {
+  const myPos = positionOf(battler, ownBoard);
+  if (myPos === null) return 0;
+  let bonus = 0;
+  for (const p of adjacentPositions(myPos)) {
+    const ally = ownBoard[p];
+    if (ally && ally !== battler && !ally.fallen && !ally.collapsed && hasTrait(ally, "estandarte")) bonus += 1;
+  }
+  return bonus;
+}
+
+/** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (hoy solo Reflejo). Se llama
+ * en la Fase 1, para ambos bandos. */
+export function resetRoundFlags(board) {
+  for (const p of POSITIONS) {
+    if (board[p]) board[p].reflejoUsedThisRound = false;
+  }
 }
 
 /** Ubica hasta 3 cartas en las 3 posiciones, respetando la Estacion de cada tipo de dano (doc §3):

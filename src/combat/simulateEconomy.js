@@ -3,12 +3,13 @@
 // Impulso/Escombros/Regente reales en vez de desplegar el mazo entero de arranque — pasada
 // separada a proposito, para poder seguir comparando contra el baseline sin economia si hace
 // falta. Ver economy.js para las decisiones de diseno de cada recurso.
-import { placeCard, aliveBattlers, backfillFromReserve, NUCLEO_BASE, POSITIONS } from "./board.js";
+import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, estandarteBonusFor, NUCLEO_BASE, POSITIONS } from "./board.js";
 import { resolveAttack, checkCollapse } from "./resolve.js";
 import { buildTurnOrder } from "./simulate.js";
 import {
   gainImpulso,
   escombrosFromLoss,
+  escombrosFromDeploy,
   pickRegente,
   nucleoBonusFromRegente,
   commitFromHand,
@@ -16,6 +17,7 @@ import {
   NUCLEO_SHIELD_ROUNDS,
 } from "./economy.js";
 import { attemptMagicFallback } from "./magicFallback.js";
+import { tryReparar } from "./nucleoAbilities.js";
 
 function clearFallenSlots(board, graveyard, escombros, sideKey) {
   for (const p of POSITIONS) {
@@ -67,7 +69,7 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
 
   let impulsoA = IMPULSO_START;
   let impulsoB = IMPULSO_START;
-  const escombros = { A: 0, B: 0 };
+  const escombros = { A: escombrosFromDeploy(regenteA), B: escombrosFromDeploy(regenteB) };
 
   const stats = {
     impulsoSpent: { A: 0, B: 0 },
@@ -78,6 +80,7 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     torsoBreaks: 0,
     collapses: 0,
     magicFallback: { attempts: 0, ok: 0, failed: 0, byKind: {} }, // uso real de la salida de Magic por Linaje
+    repararUsed: { A: 0, B: 0 }, // cuantas veces cada bando pudo pagar la habilidad de Nucleo
   };
 
   const log = [];
@@ -90,22 +93,30 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     // Fase 0/1 — economia + refuerzos
     impulsoA = gainImpulso(impulsoA);
     impulsoB = gainImpulso(impulsoB);
+    resetRoundFlags(boardA); // rasgo "reflejo": vuelve a estar disponible cada ronda
+    resetRoundFlags(boardB);
 
-    const resA = commitFromHand(handA, impulsoA);
+    const resA = commitFromHand(handA, impulsoA, regenteA.identity.class); // "leal": descuento si comparte Clase con el Regente
     handA = resA.hand;
     impulsoA = resA.impulsoLeft;
     stats.impulsoSpent.A += resA.impulsoSpent;
     stats.impulsoLeftoverSum.A += impulsoA;
-    for (const card of resA.committed) placeCard(card, boardA, reserveA);
+    for (const card of resA.committed) {
+      placeCard(card, boardA, reserveA);
+      escombros.A += escombrosFromDeploy(card); // "abastecedor"
+    }
     if (stats.secondUnitRound.A === null && resA.committed.length > 0) stats.secondUnitRound.A = round;
     if (stats.handEmptyRound.A === null && handA.length === 0) stats.handEmptyRound.A = round;
 
-    const resB = commitFromHand(handB, impulsoB);
+    const resB = commitFromHand(handB, impulsoB, regenteB.identity.class);
     handB = resB.hand;
     impulsoB = resB.impulsoLeft;
     stats.impulsoSpent.B += resB.impulsoSpent;
     stats.impulsoLeftoverSum.B += impulsoB;
-    for (const card of resB.committed) placeCard(card, boardB, reserveB);
+    for (const card of resB.committed) {
+      placeCard(card, boardB, reserveB);
+      escombros.B += escombrosFromDeploy(card);
+    }
     if (stats.secondUnitRound.B === null && resB.committed.length > 0) stats.secondUnitRound.B = round;
     if (stats.handEmptyRound.B === null && handB.length === 0) stats.handEmptyRound.B = round;
 
@@ -114,6 +125,11 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
 
     if (stats.boardFullRound.A === null && POSITIONS.every((p) => boardA[p])) stats.boardFullRound.A = round;
     if (stats.boardFullRound.B === null && POSITIONS.every((p) => boardB[p])) stats.boardFullRound.B = round;
+
+    // Habilidad de Nucleo (Reparar, 2 Escombros): heuristica simple para el simulador headless —
+    // se usa apenas se puede pagar, no espera a acumular mas.
+    if (tryReparar(boardA, escombros, "A")) stats.repararUsed.A += 1;
+    if (tryReparar(boardB, escombros, "B")) stats.repararUsed.B += 1;
 
     // Fase 2 — orden
     const priorityFirst = round % 2 === 1 ? "A" : "B";
@@ -151,7 +167,9 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
         }
       }
 
-      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds, magicFallbackActive);
+      const ownBoardForAura = side === "A" ? boardA : boardB;
+      const fuerzaBonus = estandarteBonusFor(battler, ownBoardForAura);
+      const result = resolveAttack(battler, defBoard, defNucleo, round > graceRounds, round <= nucleoShieldRounds, magicFallbackActive, fuerzaBonus);
       log.push({ round, side, card: battler.card.identity.displayName, magicFallbackKind: fallbackKind, ...result });
       if (result.kind === "hit_unit" && result.fell) stats.torsoBreaks += 1;
       if (nucleoA.hp <= 0) { winner = "B"; break; }

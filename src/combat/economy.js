@@ -17,6 +17,7 @@
 //    deja a eleccion del jugador antes de la partida) y se despliega gratis en la ronda 1, sin
 //    pagar Impulso — no es "una carta mas de la mano", es el comandante ya invertido.
 import { ZONES } from "../cardgen/zones.js";
+import { cardHasTrait } from "./traits.js";
 
 export const IMPULSO_CAP = 8; // coincide con el Coste maximo (doc §10) — arriba de esto, bankear no suma nada
 export const IMPULSO_START = 1; // antes del +1 de la ronda 1; con ese incremento queda en 2
@@ -51,22 +52,42 @@ export function nucleoBonusFromRegente(regenteCard) {
   return Math.round(regenteCard.zones[ZONES[1]].integrity / 4); // ZONES[1] = "torso"
 }
 
+/** Rasgo "abastecedor": otorga 1 Escombro al bando en el instante en que la carta se despliega
+ * (tablero o Reserva, da igual — lo que importa es que dejo la mano). Cada sitio de despliegue
+ * (Regente, commitFromHand, un click manual del jugador) llama a esto una vez por carta. */
+export function escombrosFromDeploy(card) {
+  return cardHasTrait(card, "abastecedor") ? 1 : 0;
+}
+
+/** Rasgo "leal": si la carta es de la misma Clase que el Regente del propio bando, su Coste de
+ * despliegue baja 2 (minimo 1) — el Coste de generacion (`card.cost`) no cambia, esto es solo lo
+ * que realmente se le cobra al Impulso. `regenteClass` puede ser null/undefined (todavia no hay
+ * Regente, o el llamador no lo trackea) — en ese caso nunca aplica. */
+export function effectiveDeployCost(card, regenteClass) {
+  if (regenteClass && cardHasTrait(card, "leal") && card.identity.class === regenteClass) {
+    return Math.max(1, card.cost - 2);
+  }
+  return card.cost;
+}
+
 /**
  * Compromete cartas de la mano a la Reserva mientras alcance el Impulso disponible esta ronda —
- * greedy "la mas cara que entre primero", para curvear hacia arriba cada ronda en vez de gastar en
- * cartas chicas y desperdiciar el resto. No toca el tablero: el llamador ubica cada carta
- * comprometida con placeCard().
+ * greedy "la mas cara que entre primero" (por Coste EFECTIVO, ver effectiveDeployCost), para
+ * curvear hacia arriba cada ronda en vez de gastar en cartas chicas y desperdiciar el resto. No
+ * toca el tablero: el llamador ubica cada carta comprometida con placeCard().
+ * @param {string} [regenteClass] - Clase del Regente propio, para el descuento de "leal".
  * @returns {{ committed: object[], hand: object[], impulsoLeft: number, impulsoSpent: number }}
  */
-export function commitFromHand(hand, impulso) {
-  const sorted = [...hand].sort((a, b) => b.cost - a.cost);
+export function commitFromHand(hand, impulso, regenteClass) {
+  const sorted = [...hand].sort((a, b) => effectiveDeployCost(b, regenteClass) - effectiveDeployCost(a, regenteClass));
   const committed = [];
   const leftover = [];
   let remaining = impulso;
   for (const card of sorted) {
-    if (card.cost <= remaining) {
+    const cost = effectiveDeployCost(card, regenteClass);
+    if (cost <= remaining) {
       committed.push(card);
-      remaining -= card.cost;
+      remaining -= cost;
     } else {
       leftover.push(card);
     }

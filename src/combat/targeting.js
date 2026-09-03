@@ -1,17 +1,22 @@
 // src/combat/targeting.js
-// Las 4 reglas de puntería (doc "Sistema de juego" §3.1) traducidas a una eleccion DETERMINISTA
+// Las 4 reglas de punteria (doc "Sistema de juego" §3.1) traducidas a una eleccion DETERMINISTA
 // para un simulador headless — el juego real deja esto a la decision del jugador (Pierce/Preciso)
 // o lo resuelve solo (Cut/Blunt/Magic); para AI simple uso una heuristica "rematar lo mas debil"
 // consistente en los 4 casos, documentada aca, no una estrategia optima.
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { ZONES } from "../cardgen/zones.js";
 import { adjacentZones } from "./board.js";
+import { hasTrait } from "./traits.js";
 
-function livingZones(battler, { unplatedOnly = false } = {}) {
+/** @param {{ unplatedOnly?: boolean, excludeResidue?: boolean }} [opts] - excludeResidue: rasgo
+ * "escamado" del DEFENSOR — una zona que alguna vez tuvo placa sigue bloqueando Pierce aunque esa
+ * placa ya llegue a 0 ("un resto que sigue bloqueando"). */
+function livingZones(battler, { unplatedOnly = false, excludeResidue = false } = {}) {
   return ZONES.filter((z) => {
     const zone = battler.zones[z];
     if (zone.integrity <= 0) return false;
     if (unplatedOnly && zone.plate > 0) return false;
+    if (excludeResidue && zone.plate <= 0 && zone.everPlated) return false;
     return true;
   });
 }
@@ -45,6 +50,8 @@ function lineOfSightOpen(activeType, defenderBoard) {
 }
 
 /**
+ * @param {object} attacker - el battler que ataca (no solo su tipo: algunos rasgos del atacante,
+ *   como Certero o Sismico, cambian como elige zona).
  * @param {boolean} [lineOfSight] - default true: la regla real (linea de tiro). false queda solo
  *   para poder seguir comparando contra la regla vieja del doc si hace falta.
  * @returns {null | { nucleo: true } | { position: number, zones: string[] }}
@@ -52,7 +59,9 @@ function lineOfSightOpen(activeType, defenderBoard) {
  * rival tenga gente viva en otro lado — un turno perdido de verdad, dato relevante para el
  * balance).
  */
-export function selectTarget(activeType, defenderBoard, lineOfSight = true) {
+export function selectTarget(attacker, defenderBoard, lineOfSight = true) {
+  const activeType = attacker.activeType;
+
   // Nucleo expuesto: sin unidades enemigas en pie, cualquier tipo lo alcanza (doc §2.2).
   if (!anyDefenderAlive(defenderBoard)) {
     return { nucleo: true };
@@ -68,8 +77,13 @@ export function selectTarget(activeType, defenderBoard, lineOfSight = true) {
   const defender = defenderBoard[position];
 
   if (activeType === "pierce") {
-    const zone = weakest(livingZones(defender, { unplatedOnly: true }), defender);
-    return zone ? { position, zones: [zone] } : null; // sin zona sin placa disponible: no puede apuntar
+    // Certero (rasgo del atacante): puede apuntar a zonas con placa (a mitad de dano, ver
+    // resolve.js#hitZone) en vez de estar restringido a zonas desnudas.
+    const pool = hasTrait(attacker, "certero")
+      ? livingZones(defender)
+      : livingZones(defender, { unplatedOnly: true, excludeResidue: hasTrait(defender, "escamado") });
+    const zone = weakest(pool, defender);
+    return zone ? { position, zones: [zone] } : null; // sin zona valida disponible: no puede apuntar
   }
 
   if (activeType === "cut") {
@@ -79,17 +93,21 @@ export function selectTarget(activeType, defenderBoard, lineOfSight = true) {
   }
 
   if (activeType === "blunt") {
-    // Torso + el adyacente mas debil (doc: "dos zonas contiguas") — el battler solo esta en
-    // tablero si su torso sigue con Integridad > 0 (si no, ya cayo), asi que torso siempre es
-    // un objetivo valido aca.
-    const companion = weakest(
-      adjacentZones("torso").filter((z) => defender.zones[z].integrity > 0),
-      defender
-    );
-    return { position, zones: companion ? ["torso", companion] : ["torso"] };
+    // Torso + zonas contiguas mas debiles (doc: "dos zonas contiguas"; Sismico del atacante sube
+    // esto a 3) — el battler solo esta en tablero si su torso sigue con Integridad > 0 (si no, ya
+    // cayo), asi que torso siempre es un objetivo valido aca.
+    const extraCount = hasTrait(attacker, "sismico") ? 2 : 1;
+    const pool = adjacentZones("torso").filter((z) => defender.zones[z].integrity > 0);
+    const companions = [];
+    for (let i = 0; i < extraCount && pool.length > 0; i++) {
+      const pick = weakest(pool, defender);
+      companions.push(pick);
+      pool.splice(pool.indexOf(pick), 1);
+    }
+    return { position, zones: ["torso", ...companions] };
   }
 
-  // magic: cualquier zona, ignora placa.
+  // magic: cualquier zona, ignora placa (salvo que el defensor tenga "runico", ver resolve.js).
   const zone = weakest(livingZones(defender), defender);
   return zone ? { position, zones: [zone] } : null;
 }

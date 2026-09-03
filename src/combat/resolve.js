@@ -3,10 +3,19 @@
 // de Magic (§3.1), daño a Nucleo. Muta los battlers/Nucleo directo (simulador headless, no el
 // modelo inmutable de la UI real) — mas simple para correr miles de partidas rapido.
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
+import { ZONES } from "../cardgen/zones.js";
 import { selectTarget } from "./targeting.js";
+import { hasTrait } from "./traits.js";
 
 export function effectiveFuerza(battler) {
-  return Math.min(battler.strength, DAMAGE_TYPES[battler.activeType].fuerzaTope + 2);
+  let fuerza = battler.strength;
+  // Vengativo (raro): +1 Fuerza por cada zona PROPIA rota — recompensa aguantar daño. La
+  // contrapartida (-1 Fuerza base) ya se aplica en generacion (cardgen/card.js), esto es solo la
+  // parte dinamica que cambia con el estado de combate.
+  if (hasTrait(battler, "vengativo")) {
+    fuerza += ZONES.filter((z) => battler.zones[z].integrity <= 0).length;
+  }
+  return Math.min(fuerza, DAMAGE_TYPES[battler.activeType].fuerzaTope + 2);
 }
 
 /** Aplica la cascada de romper una zona (doc §4.1) — se llama UNA vez, justo cuando esa zona
@@ -38,28 +47,57 @@ export function applyDamageToZone(defender, zoneName, dmg) {
   }
 }
 
+/** Remachado (comun): 1 vez por partida, una placa que se acaba de romper se repone al toque —
+ * se chequea justo despues de descontar la placa en Cut/Blunt. */
+function tryRemachado(defender, zone) {
+  if (zone.plate <= 0 && hasTrait(defender, "remachado") && !defender.remachadoUsed) {
+    defender.remachadoUsed = true;
+    zone.plate = 1;
+  }
+}
+
 /**
- * Un golpe contra UNA zona, respetando placa segun tipo (doc §5.3). Devuelve que paso REALMENTE
- * en este golpe — antes esto se inferia comparando la suma de Integridad del tablero antes/despues,
- * lo que mezclaba "rompio 1 de Placa mientras Cut hacia su trabajo" con "no paso nada" bajo el
- * mismo balde de "cero dano" — son cosas distintas (una es la mecanica funcionando, la otra un
- * verdadero golpe en el aire), asi que ahora se distinguen en el origen del dato.
+ * Un golpe contra UNA zona, respetando placa segun tipo (doc §5.3) y los rasgos de ataque/defensa
+ * que lo modifican. Devuelve que paso REALMENTE en este golpe — antes esto se inferia comparando
+ * la suma de Integridad del tablero antes/despues, lo que mezclaba "rompio 1 de Placa mientras Cut
+ * hacia su trabajo" con "no paso nada" bajo el mismo balde de "cero dano" — son cosas distintas
+ * (una es la mecanica funcionando, la otra un verdadero golpe en el aire), asi que ahora se
+ * distinguen en el origen del dato.
  * @returns {{ plateChipped: boolean, integrityDamage: number }}
  */
-function hitZone(defender, zoneName, activeType, fuerza) {
+function hitZone(attacker, defender, zoneName, fuerza) {
+  const activeType = attacker.activeType;
   const zone = defender.zones[zoneName];
   zone.hitsTaken = (zone.hitsTaken || 0) + 1; // instrumentacion para "cuantos golpes para romper" (§17.3)
 
+  // Rasgos del atacante que suman Fuerza a ESTE golpe puntual (no a la ficha en general).
+  let effFuerza = fuerza;
+  if (hasTrait(attacker, "carnicero") && zone.plate <= 0) effFuerza += 2; // +2 contra zonas sin placa
+  if (hasTrait(attacker, "ejecutor") && zone.integrity === 1) effFuerza += 3; // +3 rematando una zona en 1
+
   if (activeType === "magic") {
+    // Runico (rasgo del DEFENSOR): sus placas tambien bloquean Magic, que normalmente la ignora.
+    if (hasTrait(defender, "runico") && zone.plate > 0) {
+      return { plateChipped: false, integrityDamage: 0 };
+    }
     const before = zone.integrity;
-    applyDamageToZone(defender, zoneName, fuerza); // ignora la placa por completo
+    applyDamageToZone(defender, zoneName, effFuerza);
+    return { plateChipped: false, integrityDamage: before - zone.integrity };
+  }
+
+  // Certero (rasgo del atacante): Pierce puede llegar aca con una zona placada — pega a mitad de
+  // Fuerza en vez de fallar (targeting.js ya filtro esto para el Pierce normal, sin Certero).
+  if (activeType === "pierce" && zone.plate > 0) {
+    const before = zone.integrity;
+    applyDamageToZone(defender, zoneName, Math.ceil(effFuerza / 2));
     return { plateChipped: false, integrityDamage: before - zone.integrity };
   }
 
   if (zone.plate <= 0) {
     // Blunt sin placa de por medio: "dano reducido" (doc §3.1) — solo se define fuerza COMPLETA
-    // para el caso sin placa de Pierce/Cut; Blunt pega 2 zonas, cada una a la mitad.
-    const dmg = activeType === "blunt" ? Math.ceil(fuerza / 2) : fuerza;
+    // para el caso sin placa de Pierce/Cut; Blunt pega 2 (o 3 con Sismico) zonas, cada una a la
+    // mitad.
+    const dmg = activeType === "blunt" ? Math.ceil(effFuerza / 2) : effFuerza;
     const before = zone.integrity;
     applyDamageToZone(defender, zoneName, dmg);
     return { plateChipped: false, integrityDamage: before - zone.integrity };
@@ -68,16 +106,30 @@ function hitZone(defender, zoneName, activeType, fuerza) {
   // Placa intacta/agrietada:
   if (activeType === "cut") {
     zone.plate = Math.max(0, zone.plate - 1); // "el resto del golpe se pierde"
+    tryRemachado(defender, zone);
+    if (hasTrait(attacker, "brutal") && zone.plate <= 0) {
+      // Brutal: ademas de romper la placa, pasa 1 de dano de todos modos.
+      const before = zone.integrity;
+      applyDamageToZone(defender, zoneName, 1);
+      return { plateChipped: true, integrityDamage: before - zone.integrity };
+    }
     return { plateChipped: true, integrityDamage: 0 };
   }
   if (activeType === "blunt") {
     zone.plate = Math.max(0, zone.plate - 1);
+    tryRemachado(defender, zone);
     const before = zone.integrity;
     applyDamageToZone(defender, zoneName, 1); // fijo (doc §5.3), no escala con Fuerza
     return { plateChipped: true, integrityDamage: before - zone.integrity };
   }
-  // pierce nunca llega aca: selectTarget() solo le da zonas sin placa.
+  // pierce sin Certero nunca llega aca: selectTarget() solo le da zonas sin placa.
   return { plateChipped: false, integrityDamage: 0 };
+}
+
+function weakestLivingZone(battler) {
+  const candidates = ZONES.filter((z) => battler.zones[z].integrity > 0);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (battler.zones[a].integrity <= battler.zones[b].integrity ? a : b));
 }
 
 /**
@@ -96,16 +148,19 @@ function hitZone(defender, zoneName, activeType, fuerza) {
  *   aliado, segun el Linaje). El costo normal de cabeza (1 de Integridad) se sigue aplicando mas
  *   abajo, pero como la cabeza ya esta en 0 es un no-op inofensivo (Math.max clamp) — no duplica
  *   penalizacion.
+ * @param {number} [fuerzaBonus] - default 0: bonos de Fuerza que dependen de TOPOLOGIA de tablero
+ *   (hoy solo el aura de "estandarte") — resolve.js no conoce el tablero propio del atacante, asi
+ *   que el llamador lo calcula (ver board.js#estandarteBonusFor) y lo pasa ya resuelto.
  */
-export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false, magicFallbackActive = false) {
+export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = true, nucleoShielded = false, magicFallbackActive = false, fuerzaBonus = 0) {
   if (attacker.activeType === "magic" && attacker.zones.head.integrity <= 0 && !magicFallbackActive) {
     return { kind: "no_magic_head_broken" };
   }
 
-  const target = selectTarget(attacker.activeType, defenderBoard, lineOfSight);
+  const target = selectTarget(attacker, defenderBoard, lineOfSight);
   if (!target) return { kind: "no_target" };
 
-  const fuerza = effectiveFuerza(attacker);
+  const fuerza = effectiveFuerza(attacker) + fuerzaBonus;
 
   if (attacker.activeType === "magic") {
     applyDamageToZone(attacker, "head", 1); // costo de lanzar (doc §3.1) — SIEMPRE, haya o no Nucleo de por medio
@@ -120,12 +175,12 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
   const defender = defenderBoard[target.position];
   const hits = target.zones.map((zoneName) => ({
     zone: zoneName,
-    ...hitZone(defender, zoneName, attacker.activeType, fuerza),
+    ...hitZone(attacker, defender, zoneName, fuerza),
   }));
   const plateChipped = hits.some((h) => h.plateChipped);
   const integrityDamage = hits.reduce((sum, h) => sum + h.integrityDamage, 0);
 
-  return {
+  const result = {
     kind: "hit_unit",
     position: target.position,
     zones: target.zones,
@@ -135,6 +190,21 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
     trueWaste: !plateChipped && integrityDamage === 0, // no paso NADA — ni daño ni progreso en la placa
     fell: defender.fallen,
   };
+
+  // Reflejo (comun): si el defensor sobrevive, contraataca una vez por ronda — simplificado
+  // (ignora placa del atacante, no dispara su propio Reflejo en cadena) para no anidar una
+  // resolucion completa de resolveAttack dentro de otra.
+  if (!defender.fallen && !defender.collapsed && hasTrait(defender, "reflejo") && !defender.reflejoUsedThisRound) {
+    defender.reflejoUsedThisRound = true;
+    const counterZone = weakestLivingZone(attacker);
+    if (counterZone) {
+      const counterFuerza = effectiveFuerza(defender);
+      applyDamageToZone(attacker, counterZone, counterFuerza);
+      result.reflejo = { zone: counterZone, dmg: counterFuerza, attackerFell: attacker.fallen };
+    }
+  }
+
+  return result;
 }
 
 /** Colapso (doc §4.3): ambos brazos rotos, o piernas + brazo principal rotos ("perdio las piernas

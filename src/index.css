@@ -3195,11 +3195,29 @@ button, input {
 .board-proto-resources {
   flex: none;
   display: flex;
+  align-items: center;
   gap: 12px;
   font-family: var(--font-pixel);
   font-size: 0.52rem;
   color: rgba(255, 248, 236, 0.85);
   padding: 2px 4px 4px;
+}
+
+.board-proto-reparar-btn {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  font-weight: 700;
+  padding: 3px 7px;
+  background: var(--hue-mid);
+  color: var(--paper);
+  border: 2px solid var(--line);
+  cursor: pointer;
+}
+
+.board-proto-reparar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* --- Mano (fase de despliegue) --- */
