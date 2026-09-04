@@ -11,8 +11,11 @@
 // Vive en un modulo aparte porque tanto simulateEconomy.js como BoardPrototype.jsx necesitaban
 // exactamente esta secuencia y antes vivia duplicada en los dos — con el riesgo real de
 // desincronizarse (ya paso una vez con el orden de turno, ver buildTurnOrder en simulate.js).
-import { estandarteBonusFor } from "./board.js";
-import { resolveAttack, applyPostAttackTraits } from "./resolve.js";
+//
+// Tambien exporta applyCollapseTraits(battler, board) — el mismo tipo de ritual compartido, pero
+// para el momento en que un battler COLAPSA (Fase 5) en vez de cuando ataca (Detonante).
+import { estandarteBonusFor, positionOf, adjacentPositions } from "./board.js";
+import { resolveAttack, applyPostAttackTraits, applyDamageToZone } from "./resolve.js";
 import { attemptMagicFallback } from "./magicFallback.js";
 import { hasTrait } from "./traits.js";
 
@@ -95,4 +98,37 @@ export function resolveTurn(battler, side, ctx) {
   }
 
   return results;
+}
+
+/**
+ * Rasgos que reaccionan al momento exacto en que un battler COLAPSA (no cuando muere por torso —
+ * son mutuamente excluyentes, ver checkCollapse en resolve.js: nunca marca `collapsed` si `fallen`
+ * ya es true). Se llama desde la Fase 5 de cada orquestador, una vez por battler, justo cuando
+ * `checkCollapse(battler)` devuelve true (el instante de la transicion, no en rondas posteriores).
+ *
+ * Detonante (legendario): "2 de dano al torso de las unidades adyacentes" — en este motor cada
+ * lado tiene su propio tablero de 3 posiciones (board.js no modela una grilla compartida), asi que
+ * "adyacentes" solo puede significar los vecinos en el MISMO tablero, es decir, sus propios
+ * aliados (fuego amigo al caer, coherente con Estandarte/Elusivo que ya usan esta misma nocion de
+ * adyacencia para el propio bando). El dano es plano (bypasea placa, mismo criterio que el costo
+ * de Magic o la propagacion de Igneo) y no dispara Colapso en cadena dentro de esta misma pasada:
+ * si el 2 de dano rompe el torso de un vecino, `applyDamageToZone` ya marca `fallen` el solo — no
+ * hace falta logica extra aca.
+ *
+ * Renaciente y Legado ("al colapsar, vuelve a la mano" / "deja 3 Escombros en vez de 1") NO viven
+ * aca: necesitan la mano/Escombros/Caidos de cada orquestador, que no son iguales entre el
+ * simulador headless (arrays) y BoardPrototype.jsx (estado de React) — se resuelven en el punto
+ * donde cada uno ya limpia los casilleros caidos (`clearFallenSlots` / su equivalente en
+ * BoardPrototype), no en un modulo compartido.
+ */
+export function applyCollapseTraits(battler, board) {
+  if (!hasTrait(battler, "detonante")) return;
+  const pos = positionOf(battler, board);
+  if (pos === null) return;
+  for (const p of adjacentPositions(pos)) {
+    const neighbor = board[p];
+    if (neighbor && neighbor !== battler && !neighbor.fallen && !neighbor.collapsed && neighbor.zones.torso.integrity > 0) {
+      applyDamageToZone(neighbor, "torso", 2);
+    }
+  }
 }

@@ -28,9 +28,34 @@ export function gainImpulso(current) {
 }
 
 /** round(Coste/3), minimo 1 — perder una unidad de Coste 1-4 deja 1 Escombro, Coste 6 deja 2,
- * Coste 8 deja 3. */
-export function escombrosFromLoss(cost) {
-  return Math.max(1, Math.round(cost / 3));
+ * Coste 8 deja 3. Rasgo "legado" (legendario): al colapsar deja 3 Escombros en vez de 1 — se
+ * modela como triplicar el resultado ya calculado (no solo el minimo de 1), asi tambien premia
+ * mas perder un Legado caro. */
+export function escombrosFromLoss(cost, hasLegado = false) {
+  const base = Math.max(1, Math.round(cost / 3));
+  return hasLegado ? base * 3 : base;
+}
+
+/**
+ * Que pasa economicamente cuando un battler sale del tablero (fallen o collapsed) — funcion pura,
+ * no muta nada ni toca el tablero, el llamador decide que hacer con el resultado (los dos
+ * orquestadores, simulateEconomy.js y BoardPrototype.jsx, necesitaban exactamente esto y antes lo
+ * tenian duplicado, con el mismo riesgo de desincronizarse que ya paso una vez con el orden de
+ * turno — ver turnResolution.js).
+ *
+ * Renaciente ("al colapsar, vuelve a la mano de su dueno") y Legado ("al colapsar, 3x Escombros")
+ * son especificamente sobre COLAPSO real, no sobre morir por torso roto — `isRealCollapse` separa
+ * ambos casos (son mutuamente excluyentes, ver resolve.js#checkCollapse: nunca marca `collapsed`
+ * si `fallen` ya es true). Una carta con Renaciente que muere por torso roto SI va a Caidos, como
+ * cualquier otra.
+ * @returns {{ returnedToHand: boolean, escombrosGained: number }}
+ */
+export function resolveBattlerLoss(battler) {
+  const isRealCollapse = battler.collapsed;
+  if (isRealCollapse && cardHasTrait(battler.card, "renaciente")) {
+    return { returnedToHand: true, escombrosGained: 0 };
+  }
+  return { returnedToHand: false, escombrosGained: escombrosFromLoss(battler.card.cost, isRealCollapse && cardHasTrait(battler.card, "legado")) };
 }
 
 /** Elige Regente: la carta mas cara del mazo (primer empate gana). Devuelve { regente, hand } sin

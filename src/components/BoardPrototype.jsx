@@ -14,13 +14,13 @@ import { generateCard } from "../cardgen/card.js";
 import { makeBattler, placeCard, backfillFromReserve, resetRoundFlags, legalStationFor, POSITIONS, NUCLEO_BASE } from "../combat/board.js";
 import { checkCollapse } from "../combat/resolve.js";
 import { buildTurnOrder } from "../combat/simulate.js";
-import { resolveTurn } from "../combat/turnResolution.js";
+import { resolveTurn, applyCollapseTraits } from "../combat/turnResolution.js";
 import { tryReparar, REPARAR_COST } from "../combat/nucleoAbilities.js";
 import {
   gainImpulso,
-  escombrosFromLoss,
   escombrosFromDeploy,
   effectiveDeployCost,
+  resolveBattlerLoss,
   pickRegente,
   nucleoBonusFromRegente,
   commitFromHand,
@@ -289,14 +289,28 @@ export default function BoardPrototype({ onBack }) {
       // Fase 5 de esta ronda: Colapso, despues liberar casilleros y cobrar Escombros — y si nadie
       // gano todavia, abrir la ventana de despliegue de la ronda que sigue.
       for (const p of POSITIONS) {
-        if (state.boardA[p] && checkCollapse(state.boardA[p])) pushLog(`${state.boardA[p].card.identity.name} colapsa.`);
-        if (state.boardB[p] && checkCollapse(state.boardB[p])) pushLog(`${state.boardB[p].card.identity.name} colapsa.`);
+        if (state.boardA[p] && checkCollapse(state.boardA[p])) {
+          pushLog(`${state.boardA[p].card.identity.name} colapsa.`);
+          applyCollapseTraits(state.boardA[p], state.boardA);
+        }
+        if (state.boardB[p] && checkCollapse(state.boardB[p])) {
+          pushLog(`${state.boardB[p].card.identity.name} colapsa.`);
+          applyCollapseTraits(state.boardB[p], state.boardB);
+        }
       }
-      for (const [board, sideKey] of [[state.boardA, "A"], [state.boardB, "B"]]) {
+      // economy.js#resolveBattlerLoss decide Renaciente (vuelve a la mano) vs. Escombros normales
+      // (con el triple de Legado solo si fue un Colapso real, no una muerte por torso roto).
+      for (const [board, sideKey, hand] of [[state.boardA, "A", state.handA], [state.boardB, "B", state.handB]]) {
         for (const p of POSITIONS) {
           const b = board[p];
           if (b && (b.fallen || b.collapsed)) {
-            state.escombros[sideKey] += escombrosFromLoss(b.card.cost);
+            const { returnedToHand, escombrosGained } = resolveBattlerLoss(b);
+            if (returnedToHand) {
+              hand.push(b.card);
+              pushLog(`${b.card.identity.name} colapsa y vuelve a la mano de ${sideKey === "A" ? "tu" : "el rival"}.`);
+            } else {
+              state.escombros[sideKey] += escombrosGained;
+            }
             board[p] = null;
           }
         }
@@ -341,6 +355,7 @@ export default function BoardPrototype({ onBack }) {
       else if (result.kind === "no_magic_head_broken") line += "no puede lanzar Magic (cabeza rota).";
       else if (result.kind === "nucleo_shielded") line += "el escudo del Núcleo absorbe el golpe.";
       else if (result.kind === "dodged") line += `${defBoard[result.position].card.identity.name} esquiva.`;
+      else if (result.kind === "immune") line += `${defBoard[result.position].card.identity.name} es inmune (palíndromo).`;
       else if (result.kind === "hit_nucleo") line += `impacta el Núcleo rival por ${result.dmg}.`;
       else {
         const defender = defBoard[result.position];
@@ -348,6 +363,7 @@ export default function BoardPrototype({ onBack }) {
         if (result.plateChipped) line += " — rompe placa";
         if (result.integrityDamage > 0) line += ` — ${result.integrityDamage} de daño`;
         if (result.fell) line += " — ¡cae!";
+        if (result.igneoSpread) line += " — el fuego se propaga";
         line += ".";
       }
       pushLog(line);

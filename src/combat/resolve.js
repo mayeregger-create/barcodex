@@ -44,10 +44,26 @@ function applyZoneBreakCascade(battler, zone) {
   // primera pasada) — solo importan para el chequeo de Colapso, ver checkCollapse() abajo.
 }
 
+/**
+ * @param {object} defender
+ * @param {string} zoneName
+ * @param {number} dmg
+ */
 export function applyDamageToZone(defender, zoneName, dmg) {
   const zone = defender.zones[zoneName];
   const wasAlive = zone.integrity > 0;
-  zone.integrity = Math.max(0, zone.integrity - dmg);
+  const newIntegrity = zone.integrity - dmg;
+
+  // Indomito (legendario): "la primera zona que llegaria a 0 queda en 1", una vez por partida —
+  // se chequea ANTES de aplicar el clamp normal, y si se usa, la funcion termina aca: no se marca
+  // `broken`, no dispara la cascada de zona rota (la zona nunca llego a romperse de verdad).
+  if (wasAlive && newIntegrity <= 0 && hasTrait(defender, "indomito") && !defender.indomitoUsed) {
+    defender.indomitoUsed = true;
+    zone.integrity = 1;
+    return;
+  }
+
+  zone.integrity = Math.max(0, newIntegrity);
   if (wasAlive && zone.integrity <= 0) {
     zone.broken = true;
     zone.hitsToBreak = zone.hitsTaken; // snapshot para el reporte de balance (§17.3)
@@ -55,12 +71,14 @@ export function applyDamageToZone(defender, zoneName, dmg) {
   }
 }
 
-/** Remachado (comun): 1 vez por partida, una placa que se acaba de romper se repone al toque —
- * se chequea justo despues de descontar la placa en Cut/Blunt. */
+/** Remachado (comun): 1 vez por partida, una placa que se acaba de romper repone 1 punto de
+ * resistencia — se chequea justo despues de descontar la placa en Cut/Blunt. Con Templado (+1
+ * resistencia) o materiales de 2 puntos, "reponer 1 punto" no es necesariamente volver al maximo
+ * (`zone.plateMax`), es sumar 1 nada mas. */
 function tryRemachado(defender, zone) {
   if (zone.plate <= 0 && hasTrait(defender, "remachado") && !defender.remachadoUsed) {
     defender.remachadoUsed = true;
-    zone.plate = 1;
+    zone.plate = Math.min(zone.plateMax, zone.plate + 1);
   }
 }
 
@@ -118,15 +136,21 @@ function hitZone(attacker, defender, zoneName, fuerza) {
     return { plateChipped: false, integrityDamage: before - zone.integrity };
   }
 
-  // Placa intacta/agrietada:
+  // Placa intacta/agrietada. Perforante (comun, atacante): "ignora 1 punto de resistencia de cada
+  // placa" — cada chip de Cut/Blunt le saca 2 puntos de golpe en vez de 1 (con materiales de 1
+  // punto, como cuero/hierro, la rompe entera igual; con acero/acero runico de 2, la rompe en 1
+  // golpe en vez de 2).
+  const plateReduction = hasTrait(attacker, "perforante") ? 2 : 1;
+
   if (activeType === "cut") {
-    zone.plate = Math.max(0, zone.plate - 1); // "el resto del golpe se pierde"
+    const platedBefore = zone.plate > 0;
+    zone.plate = Math.max(0, zone.plate - plateReduction); // "el resto del golpe se pierde"
     tryRemachado(defender, zone);
     if (hasTrait(attacker, "brutal") && zone.plate <= 0) {
       // Brutal: ademas de romper la placa, pasa 1 de dano de todos modos.
       const before = zone.integrity;
       applyDamageToZone(defender, zoneName, 1);
-      return { plateChipped: true, integrityDamage: before - zone.integrity };
+      return { plateChipped: platedBefore, integrityDamage: before - zone.integrity };
     }
     if (hasTrait(attacker, "devastador")) {
       // Devastador: "el dano se aplica a la zona Y a la placa a la vez" — rompe la placa igual que
@@ -134,18 +158,19 @@ function hitZone(attacker, defender, zoneName, fuerza) {
       // perderlo. Contrapartida ya cobrada arriba (Alcance -1, ver targeting.js#effectiveReach).
       const before = zone.integrity;
       applyDamageToZone(defender, zoneName, effFuerza);
-      return { plateChipped: true, integrityDamage: before - zone.integrity };
+      return { plateChipped: platedBefore, integrityDamage: before - zone.integrity };
     }
-    return { plateChipped: true, integrityDamage: 0 };
+    return { plateChipped: platedBefore, integrityDamage: 0 };
   }
   if (activeType === "blunt") {
-    zone.plate = Math.max(0, zone.plate - 1);
+    const platedBefore = zone.plate > 0;
+    zone.plate = Math.max(0, zone.plate - plateReduction);
     tryRemachado(defender, zone);
     // Devastador: el golpe "reducido" de Blunt (mitad de Fuerza) pasa entero en vez del fijo de 1.
     const dmg = hasTrait(attacker, "devastador") ? Math.ceil(effFuerza / 2) : 1; // fijo (doc §5.3), no escala con Fuerza salvo Devastador
     const before = zone.integrity;
     applyDamageToZone(defender, zoneName, dmg);
-    return { plateChipped: true, integrityDamage: before - zone.integrity };
+    return { plateChipped: platedBefore, integrityDamage: before - zone.integrity };
   }
   // pierce sin Certero nunca llega aca: selectTarget() solo le da zonas sin placa.
   return { plateChipped: false, integrityDamage: 0 };
@@ -204,6 +229,14 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
 
   const defender = defenderBoard[target.position];
 
+  // Palindromo (legendario, solo en codigos capicua): inmune al PRIMER ataque que recibe cada
+  // ronda, sin importar el tipo — se chequea antes que Escurridizo, ambos son inmunidades totales
+  // pero Palindromo es el recurso mas limitado (1 vez por ronda) asi que se consume primero.
+  if (hasTrait(defender, "palindromo") && !defender.palindromoUsedThisRound) {
+    defender.palindromoUsedThisRound = true;
+    return { kind: "immune", position: target.position };
+  }
+
   // Escurridizo (raro, defensor): al ser atacado por Pierce, esquiva entero — no hay zona
   // elegida, placa gastada ni progreso de ningun tipo, el golpe se pierde en el aire.
   if (attacker.activeType === "pierce" && hasTrait(defender, "escurridizo")) {
@@ -254,18 +287,33 @@ export function resolveAttack(attacker, defenderBoard, nucleo, lineOfSight = tru
     }
   }
 
+  // Igneo (legendario): el dano "se propaga" 1 punto a la misma zona de la unidad de atras (la
+  // posicion siguiente en el tablero del DEFENSOR) — flat, ignora placa (como el costo de Magic),
+  // no se refleja en `integrityDamage`/`trueWaste` (esas son metricas del golpe PRINCIPAL).
+  if (hasTrait(attacker, "igneo") && !defender.fallen) {
+    const behind = defenderBoard[target.position + 1];
+    if (behind && !behind.fallen && !behind.collapsed) {
+      for (const zoneName of target.zones) {
+        if (behind.zones[zoneName] && behind.zones[zoneName].integrity > 0) {
+          applyDamageToZone(behind, zoneName, 1);
+        }
+      }
+      result.igneoSpread = { to: target.position + 1, zones: target.zones };
+    }
+  }
+
   return result;
 }
 
-/** Sereno (raro): al final de la ronda, si no ataco, repone 1 de placa — como la placa nunca pasa
- * de 1 (doc §7.6/materiales), "reponer" es simplemente volver a poner en 1 la primera zona que
- * alguna vez tuvo placa y hoy esta en 0. Elige la primera en el orden de ZONES (desempate
- * arbitrario pero deterministico), no la "mas dañada" — con placa binaria no hay tal cosa. */
+/** Sereno (raro): al final de la ronda, si no ataco, repone 1 punto de resistencia de placa a la
+ * primera zona que la tenga incompleta. Con placa multi-punto (materiales/Templado), esto puede
+ * ser una reparacion parcial, no necesariamente al maximo (`zone.plateMax`). Elige la primera en
+ * el orden de ZONES (desempate arbitrario pero deterministico). */
 function restoreSerenoPlate(battler) {
   for (const z of ZONES) {
     const zone = battler.zones[z];
-    if (zone.integrity > 0 && zone.everPlated && zone.plate <= 0) {
-      zone.plate = 1;
+    if (zone.integrity > 0 && zone.everPlated && zone.plate < zone.plateMax) {
+      zone.plate += 1;
       return;
     }
   }
@@ -289,9 +337,11 @@ export function applyPostAttackTraits(battler, result) {
  * y todo lo que le permitia atacar a distancia" — interpretado aca como: sin piernas Y sin el
  * brazo principal, ya sea el de nacimiento o el que heredo al cambiar de mano). Se chequea en un
  * barrido aparte (Fase 5), no en el momento del golpe — un battler puede seguir "vivo" en el
- * tablero el resto de la ronda despues de quedar en condicion de Colapso. */
+ * tablero el resto de la ronda despues de quedar en condicion de Colapso.
+ * Estoico (legendario) nunca colapsa — "sigue bloqueando su posicion". */
 export function checkCollapse(battler) {
   if (battler.fallen || battler.collapsed) return false;
+  if (hasTrait(battler, "estoico")) return false;
   const armsGone = battler.zones.armMain.integrity <= 0 && battler.zones.armOff.integrity <= 0;
   const legsAndMainGone = battler.zones.legs.integrity <= 0 && battler.zones.armMain.integrity <= 0;
   if (armsGone || legsAndMainGone) {

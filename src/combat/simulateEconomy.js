@@ -6,11 +6,11 @@
 import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, NUCLEO_BASE, POSITIONS } from "./board.js";
 import { checkCollapse } from "./resolve.js";
 import { buildTurnOrder } from "./simulate.js";
-import { resolveTurn } from "./turnResolution.js";
+import { resolveTurn, applyCollapseTraits } from "./turnResolution.js";
 import {
   gainImpulso,
-  escombrosFromLoss,
   escombrosFromDeploy,
+  resolveBattlerLoss,
   pickRegente,
   nucleoBonusFromRegente,
   commitFromHand,
@@ -19,12 +19,20 @@ import {
 } from "./economy.js";
 import { tryReparar } from "./nucleoAbilities.js";
 
-function clearFallenSlots(board, graveyard, escombros, sideKey) {
+/** `hand` recibe de vuelta las cartas de Renaciente en vez de ir a `graveyard` — el llamador debe
+ * reasignar su variable de mano al array devuelto por `commitFromHand` la RONDA SIGUIENTE, asi que
+ * empujar aca (mutando el mismo array que ya referencia esa variable) alcanza sin devolver nada
+ * nuevo. Ver economy.js#resolveBattlerLoss para la logica de Renaciente/Legado en si. */
+function clearFallenSlots(board, graveyard, escombros, sideKey, hand) {
   for (const p of POSITIONS) {
     const b = board[p];
     if (b && (b.fallen || b.collapsed)) {
-      graveyard.push(b);
-      escombros[sideKey] += escombrosFromLoss(b.card.cost);
+      const { returnedToHand, escombrosGained } = resolveBattlerLoss(b);
+      if (returnedToHand) hand.push(b.card);
+      else {
+        graveyard.push(b);
+        escombros[sideKey] += escombrosGained;
+      }
       board[p] = null;
     }
   }
@@ -175,11 +183,11 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     }
     if (winner) break;
 
-    // Fase 5 — bajas (Colapso, despues liberar casilleros y cobrar Escombros)
-    for (const b of aliveBattlers(boardA)) if (checkCollapse(b)) stats.collapses += 1;
-    for (const b of aliveBattlers(boardB)) if (checkCollapse(b)) stats.collapses += 1;
-    clearFallenSlots(boardA, graveyardA, escombros, "A");
-    clearFallenSlots(boardB, graveyardB, escombros, "B");
+    // Fase 5 — bajas (Colapso, Detonante en el instante, despues liberar casilleros y cobrar Escombros/Renaciente)
+    for (const b of aliveBattlers(boardA)) if (checkCollapse(b)) { stats.collapses += 1; applyCollapseTraits(b, boardA); }
+    for (const b of aliveBattlers(boardB)) if (checkCollapse(b)) { stats.collapses += 1; applyCollapseTraits(b, boardB); }
+    clearFallenSlots(boardA, graveyardA, escombros, "A", handA);
+    clearFallenSlots(boardB, graveyardB, escombros, "B", handB);
   }
 
   if (!winner) {

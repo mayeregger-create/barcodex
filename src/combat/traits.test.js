@@ -3,17 +3,18 @@
 // las siguientes: brutal, carnicero, ejecutor, runico, escamado, remachado, certero, sismico,
 // estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
 // sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico, arrollador, arponero,
-// inamovible, elusivo, devastador (motor de combate) + abastecedor, leal (economia) + Reparar
+// inamovible, elusivo, devastador, perforante, templado, estoico, indomito, palindromo, igneo,
+// detonante (motor de combate) + abastecedor, leal, legado, renaciente (economia) + Reparar
 // (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits } from "./resolve.js";
+import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits, checkCollapse } from "./resolve.js";
 import { selectTarget } from "./targeting.js";
-import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, legalStationFor, pushBattler, elusivoSwap, POSITIONS } from "./board.js";
-import { escombrosFromDeploy, effectiveDeployCost, commitFromHand } from "./economy.js";
+import { estandarteBonusFor, resetRoundFlags, positionOf, adjacentPositions, legalStationFor, pushBattler, elusivoSwap, makeBattler, POSITIONS } from "./board.js";
+import { escombrosFromDeploy, effectiveDeployCost, commitFromHand, escombrosFromLoss, resolveBattlerLoss } from "./economy.js";
 import { findMostDamaged, tryReparar, REPARAR_COST } from "./nucleoAbilities.js";
 import { buildTurnOrder } from "./simulate.js";
-import { resolveTurn } from "./turnResolution.js";
+import { resolveTurn, applyCollapseTraits } from "./turnResolution.js";
 
 const ZONE_BASE = { head: 4, torso: 6, armMain: 5, armOff: 5, legs: 5 };
 
@@ -33,9 +34,12 @@ function fakeBattler({
   const liveZones = {};
   for (const z of Object.keys(ZONE_BASE)) {
     const base = overrides[z]?.integrity ?? ZONE_BASE[z];
+    // plateResist: puntos reales de placa (1 salvo que `overrides` pida otro, p.ej. para simular
+    // acero_runico/Templado con 2) — plateMax es el techo al que Remachado/Sereno pueden reponer.
+    const plateResist = overrides[z]?.plateResist ?? (overrides[z]?.plate ? 1 : 0);
     const plate = overrides[z]?.plate ?? 0;
-    genZones[z] = { integrity: base, plate, plateResist: plate > 0 ? 1 : 0 };
-    liveZones[z] = { integrity: overrides[z]?.liveIntegrity ?? base, plate, everPlated: plate > 0 };
+    genZones[z] = { integrity: base, plate: plate > 0 ? 1 : 0, plateResist };
+    liveZones[z] = { integrity: overrides[z]?.liveIntegrity ?? base, plate, plateMax: overrides[z]?.plateMax ?? plateResist, everPlated: plate > 0 };
   }
   return {
     card: { identity: { trait, secondTrait, class: clase, name: "Test" }, cost, zones: genZones, combat: { damageTypeActive: activeType } },
@@ -49,6 +53,9 @@ function fakeBattler({
     remachadoUsed: false,
     reflejoUsedThisRound: false,
     pacienteStacks: 0,
+    implacableUsedThisRound: false,
+    indomitoUsed: false,
+    palindromoUsedThisRound: false,
   };
 }
 
@@ -783,4 +790,261 @@ test("sin devastador: Cut normal SI alcanza la posicion 2", () => {
   const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 5 } } }), "torso");
   const target = selectTarget(attacker, boardWith({ 2: defender }), false);
   assert.equal(target.position, 2);
+});
+
+// ---------- perforante / templado (placa multi-punto) ----------
+
+test("perforante: rompe una placa de 2 puntos (acero) en un solo golpe de Cut", () => {
+  const attacker = fakeBattler({ trait: "perforante", activeType: "cut", strength: 4 });
+  const defender = onlyZone(
+    fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 2, plateResist: 2 } } }),
+    "torso"
+  );
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.plate, 0);
+  assert.equal(result.hits[0].plateChipped, true);
+});
+
+test("sin perforante: una placa de 2 puntos necesita 2 golpes de Cut para romperse", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(
+    fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 2, plateResist: 2 } } }),
+    "torso"
+  );
+  resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.plate, 1, "primer golpe: queda a mitad de camino, no rota");
+  resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(defender.zones.torso.plate, 0, "segundo golpe: recien ahi se rompe del todo");
+});
+
+test("templado: sube el techo de reposicion de placa (plateMax) +1 sobre el material", () => {
+  const generated = {
+    identity: { trait: "templado", secondTrait: null, class: "warrior", name: "Test" },
+    cost: 3,
+    combat: { strength: 4, initiative: 5, damageTypeActive: "cut" },
+    zones: {
+      head: { integrity: 4, plate: 0, plateResist: 0 },
+      torso: { integrity: 6, plate: 1, plateResist: 1 }, // material de 1 punto (cuero/hierro)
+      armMain: { integrity: 5, plate: 0, plateResist: 0 },
+      armOff: { integrity: 5, plate: 0, plateResist: 0 },
+      legs: { integrity: 5, plate: 0, plateResist: 0 },
+    },
+  };
+  const battler = makeBattler(generated);
+  assert.equal(battler.zones.torso.plate, 1); // arranca en los puntos reales del material
+  assert.equal(battler.zones.torso.plateMax, 2); // +1 de Templado sobre el plateResist de 1
+});
+
+test("sin templado: plateMax es igual al plateResist del material, sin bono", () => {
+  const generated = {
+    identity: { trait: "brutal", secondTrait: null, class: "warrior", name: "Test" },
+    cost: 3,
+    combat: { strength: 4, initiative: 5, damageTypeActive: "cut" },
+    zones: {
+      head: { integrity: 4, plate: 0, plateResist: 0 },
+      torso: { integrity: 6, plate: 1, plateResist: 1 },
+      armMain: { integrity: 5, plate: 0, plateResist: 0 },
+      armOff: { integrity: 5, plate: 0, plateResist: 0 },
+      legs: { integrity: 5, plate: 0, plateResist: 0 },
+    },
+  };
+  const battler = makeBattler(generated);
+  assert.equal(battler.zones.torso.plateMax, 1);
+});
+
+// ---------- estoico ----------
+
+test("estoico: nunca colapsa, ni con ambos brazos rotos", () => {
+  const battler = fakeBattler({ trait: "estoico" });
+  battler.zones.armMain.integrity = 0;
+  battler.zones.armOff.integrity = 0;
+  const collapsed = checkCollapse(battler);
+  assert.equal(collapsed, false);
+  assert.equal(battler.collapsed, false);
+});
+
+test("sin estoico: ambos brazos rotos SI colapsa (control)", () => {
+  const battler = fakeBattler();
+  battler.zones.armMain.integrity = 0;
+  battler.zones.armOff.integrity = 0;
+  const collapsed = checkCollapse(battler);
+  assert.equal(collapsed, true);
+  assert.equal(battler.collapsed, true);
+});
+
+// ---------- indomito ----------
+
+test("indomito: la primera zona que llegaria a 0 queda en 1 en vez de romperse", () => {
+  const battler = fakeBattler({ trait: "indomito" });
+  battler.indomitoUsed = false;
+  applyDamageToZone(battler, "torso", 999);
+  assert.equal(battler.zones.torso.integrity, 1);
+  assert.equal(battler.zones.torso.broken, undefined, "no se marco como rota: la cascada no se disparo");
+  assert.equal(battler.fallen, false, "torso 'rota' dispara fallen=true en la cascada; aca no debe pasar");
+  assert.equal(battler.indomitoUsed, true);
+});
+
+test("indomito: solo funciona una vez por partida, la segunda zona rompe normal", () => {
+  const battler = fakeBattler({ trait: "indomito" });
+  applyDamageToZone(battler, "torso", 999); // consume el unico uso
+  applyDamageToZone(battler, "armMain", 999);
+  assert.equal(battler.zones.armMain.integrity, 0);
+  assert.equal(battler.zones.armMain.broken, true);
+});
+
+test("sin indomito: una zona que llega a 0 se rompe normal (control)", () => {
+  const battler = fakeBattler();
+  applyDamageToZone(battler, "torso", 999);
+  assert.equal(battler.zones.torso.integrity, 0);
+  assert.equal(battler.fallen, true);
+});
+
+// ---------- palindromo ----------
+
+test("palindromo: inmune al primer ataque que recibe en la ronda", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ trait: "palindromo", overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(result.kind, "immune");
+  assert.equal(defender.zones.torso.integrity, 10, "el golpe no paso nada de dano");
+});
+
+test("palindromo: NO es inmune a un segundo ataque en la misma ronda", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ trait: "palindromo", overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const board = boardWith({ 1: defender });
+  resolveAttack(attacker, board, { hp: 20 }, false); // consume la inmunidad de esta ronda
+  const second = resolveAttack(attacker, board, { hp: 20 }, false);
+  assert.notEqual(second.kind, "immune");
+  assert.equal(defender.zones.torso.integrity, 6); // 10 - 4 de Fuerza, sin placa de por medio
+});
+
+test("palindromo: resetRoundFlags devuelve la inmunidad disponible para la ronda siguiente", () => {
+  const defender = fakeBattler({ trait: "palindromo" });
+  defender.palindromoUsedThisRound = true;
+  resetRoundFlags(boardWith({ 1: defender }));
+  assert.equal(defender.palindromoUsedThisRound, false);
+});
+
+// ---------- igneo ----------
+
+test("igneo: propaga 1 punto de dano a la misma zona del aliado de atras", () => {
+  const attacker = fakeBattler({ trait: "igneo", activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const allyBehind = fakeBattler({ overrides: { torso: { liveIntegrity: 5, plate: 1 } } }); // placado, para probar que igneo la ignora
+  const result = resolveAttack(attacker, boardWith({ 1: defender, 2: allyBehind }), { hp: 20 }, false);
+  assert.ok(result.igneoSpread, "el resultado marca que hubo propagacion");
+  assert.equal(allyBehind.zones.torso.integrity, 4, "1 de dano plano, ignora la placa");
+  assert.equal(allyBehind.zones.torso.plate, 1, "la placa del aliado no se toca, el dano la ignora");
+});
+
+test("sin igneo: no hay propagacion al aliado de atras", () => {
+  const attacker = fakeBattler({ activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const allyBehind = fakeBattler({ overrides: { torso: { liveIntegrity: 5 } } });
+  const result = resolveAttack(attacker, boardWith({ 1: defender, 2: allyBehind }), { hp: 20 }, false);
+  assert.equal(result.igneoSpread, undefined);
+  assert.equal(allyBehind.zones.torso.integrity, 5);
+});
+
+test("igneo: sin aliado en la posicion de atras, no revienta ni hace nada", () => {
+  const attacker = fakeBattler({ trait: "igneo", activeType: "cut", strength: 4 });
+  const defender = onlyZone(fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } }), "torso");
+  const result = resolveAttack(attacker, boardWith({ 1: defender }), { hp: 20 }, false);
+  assert.equal(result.igneoSpread, undefined);
+});
+
+// ---------- legado (economia) ----------
+
+test("legado: triplica los Escombros que deja perder la unidad", () => {
+  assert.equal(escombrosFromLoss(6, true), 6); // sin legado: round(6/3)=2 -> con legado: x3 = 6
+  assert.equal(escombrosFromLoss(1, true), 3); // minimo 1 -> con legado: x3 = 3
+});
+
+test("sin legado: escombrosFromLoss se comporta igual que antes (control)", () => {
+  assert.equal(escombrosFromLoss(6, false), 2);
+  assert.equal(escombrosFromLoss(6), 2); // default hasLegado=false
+});
+
+// ---------- detonante ----------
+
+test("detonante: al colapsar, 2 de dano al torso de los vecinos adyacentes (no a si mismo)", () => {
+  const battler = onlyZone(fakeBattler({ trait: "detonante" }), "torso"); // solo importa que este vivo en el tablero
+  const left = fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } });
+  const right = fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } });
+  const board = boardWith({ 1: left, 2: battler, 3: right });
+  applyCollapseTraits(battler, board);
+  assert.equal(left.zones.torso.integrity, 8);
+  assert.equal(right.zones.torso.integrity, 8);
+});
+
+test("detonante: el dano es plano, bypasea la placa (mismo criterio que Igneo)", () => {
+  const battler = onlyZone(fakeBattler({ trait: "detonante" }), "torso");
+  const neighbor = fakeBattler({ overrides: { torso: { liveIntegrity: 10, plate: 1 } } });
+  const board = boardWith({ 1: battler, 2: neighbor });
+  applyCollapseTraits(battler, board);
+  assert.equal(neighbor.zones.torso.integrity, 8);
+  assert.equal(neighbor.zones.torso.plate, 1, "la placa no se toca");
+});
+
+test("detonante: no llega a posiciones no contiguas (1 y 3 no son vecinas)", () => {
+  const battler = onlyZone(fakeBattler({ trait: "detonante" }), "torso");
+  const farNeighbor = fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } });
+  const board = boardWith({ 1: battler, 3: farNeighbor });
+  applyCollapseTraits(battler, board);
+  assert.equal(farNeighbor.zones.torso.integrity, 10);
+});
+
+test("sin detonante: applyCollapseTraits no hace nada", () => {
+  const battler = fakeBattler();
+  const neighbor = fakeBattler({ overrides: { torso: { liveIntegrity: 10 } } });
+  const board = boardWith({ 1: battler, 2: neighbor });
+  applyCollapseTraits(battler, board);
+  assert.equal(neighbor.zones.torso.integrity, 10);
+});
+
+test("detonante: si el battler no esta en el tablero, no revienta", () => {
+  const battler = fakeBattler({ trait: "detonante" });
+  assert.doesNotThrow(() => applyCollapseTraits(battler, boardWith({})));
+});
+
+// ---------- renaciente / legado (economia — resolveBattlerLoss) ----------
+
+test("renaciente: al colapsar de verdad, vuelve a la mano sin dar Escombros", () => {
+  const battler = fakeBattler({ trait: "renaciente", cost: 6 });
+  battler.collapsed = true;
+  const result = resolveBattlerLoss(battler);
+  assert.equal(result.returnedToHand, true);
+  assert.equal(result.escombrosGained, 0);
+});
+
+test("renaciente: si muere por torso roto (fallen), NO vuelve a la mano — Escombros normales", () => {
+  const battler = fakeBattler({ trait: "renaciente", cost: 6 });
+  battler.fallen = true; // muerte por torso, no Colapso — son mutuamente excluyentes en el motor real
+  const result = resolveBattlerLoss(battler);
+  assert.equal(result.returnedToHand, false);
+  assert.equal(result.escombrosGained, 2);
+});
+
+test("legado: al colapsar de verdad, triplica los Escombros", () => {
+  const battler = fakeBattler({ trait: "legado", cost: 6 });
+  battler.collapsed = true;
+  const result = resolveBattlerLoss(battler);
+  assert.equal(result.returnedToHand, false);
+  assert.equal(result.escombrosGained, 6);
+});
+
+test("legado: si muere por torso roto (fallen), NO triplica — 'al colapsar' es especifico, no 'al morir'", () => {
+  const battler = fakeBattler({ trait: "legado", cost: 6 });
+  battler.fallen = true;
+  const result = resolveBattlerLoss(battler);
+  assert.equal(result.escombrosGained, 2);
+});
+
+test("sin renaciente/legado: perdida normal (control)", () => {
+  const battler = fakeBattler({ cost: 6 });
+  battler.collapsed = true;
+  const result = resolveBattlerLoss(battler);
+  assert.equal(result.returnedToHand, false);
+  assert.equal(result.escombrosGained, 2);
 });

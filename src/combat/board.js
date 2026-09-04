@@ -13,12 +13,15 @@
 //    atacante en este motor, asi que "moverse para encontrar objetivo" no resolveria nada real —
 //    es un rasgo que necesita eleccion real del jugador, misma categoria que Preciso.
 //  - La mayoria de los 58 rasgos como comportamiento de COMBATE siguen siendo solo sus efectos de
-//    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js/simulate.js: brutal,
-//    carnicero, ejecutor, runico, escamado, remachado, certero, sismico, estandarte, vengativo,
-//    reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente, sereno, flanqueador,
-//    avanzado, atalaya, arrollador, arponero, inamovible, elusivo, devastador (combate) +
-//    abastecedor, leal (economia/despliegue, ver economy.js). El resto (turnos extra ya cubiertos
-//    en turnResolution.js, legendarios, etc.) sigue pendiente — ver traits.test.js para el detalle.
+//    generacion — pero un subconjunto YA vive aca/resolve.js/targeting.js/simulate.js/
+//    turnResolution.js: brutal, carnicero, ejecutor, runico, escamado, remachado, certero,
+//    sismico, estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante,
+//    paciente, sereno, flanqueador, avanzado, atalaya, arrollador, arponero, inamovible, elusivo,
+//    devastador, gemelo, implacable, frenetico, estoico, indomito, palindromo, igneo, perforante,
+//    templado, detonante (combate) + abastecedor, leal, legado, renaciente (economia/despliegue,
+//    ver economy.js/turnResolution.js#applyCollapseTraits). El resto (legendarios estructuralmente
+//    complejos, rasgos que necesitan eleccion real del jugador, etc.) sigue pendiente — ver
+//    traits.test.js para el detalle.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { hasTrait, cardHasTrait } from "./traits.js";
@@ -55,11 +58,22 @@ export function positionOf(battler, board) {
   return found === undefined ? null : found;
 }
 
-/** Arma un battler de combate a partir de una carta generada (cardgen/card.js#generateCard). */
+/** Arma un battler de combate a partir de una carta generada (cardgen/card.js#generateCard).
+ * Placa: cardgen guarda `plate` como flag binario (0/1, "esta zona nace placada") y `plateResist`
+ * como los puntos reales del material (1 cuero/hierro, 2 acero/acero runico — ver
+ * cardgen/materials.js) SOLO para instrumentacion/costo, sin vivir en combate todavia. Aca es
+ * donde se activa de verdad: `zone.plate` en combate pasa a ser esos puntos (0 si no esta
+ * placada), asi Perforante/Templado tienen algo real que sumar o restar. `zone.plateMax` es el
+ * techo al que Remachado/Sereno pueden reponer — igual a `plateResist`, +1 si esta carta tiene
+ * Templado ("las placas tienen +1 de resistencia", rasgo del DEFENSOR sobre sus propias placas). */
 export function makeBattler(generated) {
   const zones = {};
+  const templado = cardHasTrait(generated, "templado");
   for (const z of ZONES) {
-    zones[z] = { ...generated.zones[z], broken: generated.zones[z].integrity <= 0, everPlated: generated.zones[z].plate > 0 };
+    const g = generated.zones[z];
+    const baseResist = g.plate > 0 ? g.plateResist : 0;
+    const plateMax = baseResist > 0 && templado ? baseResist + 1 : baseResist;
+    zones[z] = { ...g, plate: baseResist, plateMax, broken: g.integrity <= 0, everPlated: g.plate > 0 };
   }
   return {
     card: generated,
@@ -74,6 +88,8 @@ export function makeBattler(generated) {
     reflejoUsedThisRound: false, // rasgo "reflejo": 1 vez por ronda, contraataca si sobrevive a un golpe
     pacienteStacks: 0, // rasgo "paciente": +2 Fuerza acumulativo por cada ronda que no ataca
     implacableUsedThisRound: false, // rasgo "implacable": 1 vez por ronda, ataca de nuevo si rompio una zona
+    indomitoUsed: false, // rasgo "indomito": 1 vez por partida, la primera zona que romperia queda en 1
+    palindromoUsedThisRound: false, // rasgo "palindromo": inmune al primer ataque que recibe cada ronda
   };
 }
 
@@ -141,13 +157,14 @@ export function elusivoSwap(board, position) {
   return null;
 }
 
-/** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (Reflejo, Implacable). Se
- * llama en la Fase 1, para ambos bandos. */
+/** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (Reflejo, Implacable,
+ * Palindromo). Se llama en la Fase 1, para ambos bandos. */
 export function resetRoundFlags(board) {
   for (const p of POSITIONS) {
     if (!board[p]) continue;
     board[p].reflejoUsedThisRound = false;
     board[p].implacableUsedThisRound = false;
+    board[p].palindromoUsedThisRound = false;
   }
 }
 
