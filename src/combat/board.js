@@ -18,10 +18,12 @@
 //    sismico, estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante,
 //    paciente, sereno, flanqueador, avanzado, atalaya, arrollador, arponero, inamovible, elusivo,
 //    devastador, gemelo, implacable, frenetico, estoico, indomito, palindromo, igneo, perforante,
-//    templado, detonante (combate) + abastecedor, leal, legado, renaciente (economia/despliegue,
-//    ver economy.js/turnResolution.js#applyCollapseTraits). El resto (legendarios estructuralmente
-//    complejos, rasgos que necesitan eleccion real del jugador, etc.) sigue pendiente — ver
-//    traits.test.js para el detalle.
+//    templado, detonante, colosal (combate — colosal solo aplica en el modelo de despliegue
+//    continuo, ver simulateEconomy.js/BoardPrototype.jsx, no en el baseline sin economia) +
+//    abastecedor, leal, legado, renaciente (economia/despliegue, ver economy.js/
+//    turnResolution.js#applyCollapseTraits). El resto (legendarios estructuralmente complejos,
+//    rasgos que necesitan eleccion real del jugador, etc.) sigue pendiente — ver traits.test.js
+//    para el detalle.
 import { ZONES } from "../cardgen/zones.js";
 import { DAMAGE_TYPES } from "../cardgen/classGen.js";
 import { hasTrait, cardHasTrait } from "./traits.js";
@@ -90,6 +92,7 @@ export function makeBattler(generated) {
     implacableUsedThisRound: false, // rasgo "implacable": 1 vez por ronda, ataca de nuevo si rompio una zona
     indomitoUsed: false, // rasgo "indomito": 1 vez por partida, la primera zona que romperia queda en 1
     palindromoUsedThisRound: false, // rasgo "palindromo": inmune al primer ataque que recibe cada ronda
+    justDeployed: true, // rasgo "colosal": no actua la ronda en que se despliega — se apaga en el primer resetRoundFlags que le toque
   };
 }
 
@@ -158,13 +161,18 @@ export function elusivoSwap(board, position) {
 }
 
 /** Reinicia al arrancar cada ronda los flags de "una vez por ronda" (Reflejo, Implacable,
- * Palindromo). Se llama en la Fase 1, para ambos bandos. */
+ * Palindromo) y apaga `justDeployed` (Colosal) — asi una carta recien colocada llega a este
+ * chequeo con `justDeployed` todavia en true (se salta ESTA ronda) y lo pierde recien en la
+ * llamada de la ronda SIGUIENTE, cuando ya le toca actuar normal. Se llama en la Fase 1, para
+ * ambos bandos, ANTES de colocar las cartas nuevas de esta ronda (para que no se les apague antes
+ * de tiempo). */
 export function resetRoundFlags(board) {
   for (const p of POSITIONS) {
     if (!board[p]) continue;
     board[p].reflejoUsedThisRound = false;
     board[p].implacableUsedThisRound = false;
     board[p].palindromoUsedThisRound = false;
+    board[p].justDeployed = false;
   }
 }
 

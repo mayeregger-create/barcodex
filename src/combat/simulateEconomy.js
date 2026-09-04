@@ -7,6 +7,7 @@ import { placeCard, aliveBattlers, backfillFromReserve, resetRoundFlags, NUCLEO_
 import { checkCollapse } from "./resolve.js";
 import { buildTurnOrder } from "./simulate.js";
 import { resolveTurn, applyCollapseTraits } from "./turnResolution.js";
+import { isColosalGrounded } from "./traits.js";
 import {
   gainImpulso,
   escombrosFromDeploy,
@@ -148,6 +149,11 @@ export function simulateMatchWithEconomy(deckA, deckB, { maxRounds = 60, graceRo
     // aura de Estandarte, Paciente/Sereno post-golpe, y repite el golpe si aplica Gemelo/Implacable.
     for (const { battler, side } of order) {
       if (battler.fallen || battler.collapsed) continue;
+      // Colosal: "no actua la ronda en que se despliega" — solo tiene sentido en este modelo de
+      // despliegue continuo (el baseline sin economia despliega todo el mazo de una en "ronda 1",
+      // asi que ahi no aplica). `justDeployed` se apaga en el primer resetRoundFlags que le toca
+      // (la ronda SIGUIENTE a la que entro al tablero), ver board.js#makeBattler/#resetRoundFlags.
+      if (isColosalGrounded(battler)) continue;
       const defBoard = side === "A" ? boardB : boardA;
       const defNucleo = side === "A" ? nucleoB : nucleoA;
       const ownBoard = side === "A" ? boardA : boardB;

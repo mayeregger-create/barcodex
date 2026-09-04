@@ -16,6 +16,7 @@ import { checkCollapse } from "../combat/resolve.js";
 import { buildTurnOrder } from "../combat/simulate.js";
 import { resolveTurn, applyCollapseTraits } from "../combat/turnResolution.js";
 import { tryReparar, REPARAR_COST } from "../combat/nucleoAbilities.js";
+import { isColosalGrounded } from "../combat/traits.js";
 import {
   gainImpulso,
   escombrosFromDeploy,
@@ -323,7 +324,17 @@ export default function BoardPrototype({ onBack }) {
     }
 
     let entry = state.queue.shift();
-    while (entry && (entry.battler.fallen || entry.battler.collapsed)) entry = state.queue.shift();
+    while (entry) {
+      if (entry.battler.fallen || entry.battler.collapsed) { entry = state.queue.shift(); continue; }
+      // Colosal: "no actua la ronda en que se despliega" — a diferencia de fallen/collapsed (obvio
+      // en el tablero), esto no es evidente para el jugador, asi que se loguea.
+      if (isColosalGrounded(entry.battler)) {
+        pushLog(`${entry.battler.card.identity.name}: recién desplegado (Colosal), no actúa esta ronda.`);
+        entry = state.queue.shift();
+        continue;
+      }
+      break;
+    }
     if (!entry) {
       rerender();
       return;

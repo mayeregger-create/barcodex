@@ -4,8 +4,9 @@
 // estandarte, vengativo, reflejo, diestro, yelmo_sellado, escurridizo, fulminante, paciente,
 // sereno, flanqueador, avanzado, atalaya, gemelo, implacable, frenetico, arrollador, arponero,
 // inamovible, elusivo, devastador, perforante, templado, estoico, indomito, palindromo, igneo,
-// detonante (motor de combate) + abastecedor, leal, legado, renaciente (economia) + Reparar
-// (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada escenario.
+// detonante, colosal (motor de combate) + abastecedor, leal, legado, renaciente (economia) +
+// Reparar (Nucleo). Todo con battlers sinteticos (no generateCard) para control exacto de cada
+// escenario.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAttack, effectiveFuerza, applyDamageToZone, applyPostAttackTraits, checkCollapse } from "./resolve.js";
@@ -15,6 +16,7 @@ import { escombrosFromDeploy, effectiveDeployCost, commitFromHand, escombrosFrom
 import { findMostDamaged, tryReparar, REPARAR_COST } from "./nucleoAbilities.js";
 import { buildTurnOrder } from "./simulate.js";
 import { resolveTurn, applyCollapseTraits } from "./turnResolution.js";
+import { isColosalGrounded } from "./traits.js";
 
 const ZONE_BASE = { head: 4, torso: 6, armMain: 5, armOff: 5, legs: 5 };
 
@@ -56,6 +58,7 @@ function fakeBattler({
     implacableUsedThisRound: false,
     indomitoUsed: false,
     palindromoUsedThisRound: false,
+    justDeployed: false,
   };
 }
 
@@ -1047,4 +1050,31 @@ test("sin renaciente/legado: perdida normal (control)", () => {
   const result = resolveBattlerLoss(battler);
   assert.equal(result.returnedToHand, false);
   assert.equal(result.escombrosGained, 2);
+});
+
+// ---------- colosal ----------
+
+test("colosal: esta 'grounded' (no actua) mientras justDeployed siga en true", () => {
+  const battler = fakeBattler({ trait: "colosal" });
+  battler.justDeployed = true;
+  assert.equal(isColosalGrounded(battler), true);
+});
+
+test("colosal: deja de estar grounded despues de resetRoundFlags (la ronda siguiente)", () => {
+  const battler = fakeBattler({ trait: "colosal" });
+  battler.justDeployed = true;
+  resetRoundFlags(boardWith({ 1: battler }));
+  assert.equal(isColosalGrounded(battler), false);
+});
+
+test("sin colosal: justDeployed no importa, nunca esta grounded", () => {
+  const battler = fakeBattler();
+  battler.justDeployed = true;
+  assert.equal(isColosalGrounded(battler), false);
+});
+
+test("colosal: si ya actuo esta ronda (justDeployed=false), no esta grounded", () => {
+  const battler = fakeBattler({ trait: "colosal" });
+  battler.justDeployed = false;
+  assert.equal(isColosalGrounded(battler), false);
 });
